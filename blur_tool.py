@@ -24,6 +24,7 @@ import argparse
 import csv
 import json
 import os
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -90,12 +91,213 @@ def format_score(score: float) -> str:
     return f"{score:.2f}"
 
 
+def platform_key() -> str:
+    if sys.platform.startswith("win"):
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    return "linux"
+
+
+def platform_label() -> str:
+    key = platform_key()
+    if key == "windows":
+        return "Windows"
+    if key == "macos":
+        return "macOS"
+    return "Linux"
+
+
+def pip_install_hint(pkg: str) -> str:
+    if platform_key() == "windows":
+        return f"py -m pip install {pkg}"
+    return f"python3 -m pip install {pkg}"
+
+
+def gui_available() -> bool:
+    if platform_key() == "windows":
+        return True
+    if platform_key() == "macos":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
 def open_in_explorer(path: Path) -> None:
-    # Windows: open folder and select file
+    # Best effort: open folder (or select file on Windows).
     try:
-        os.system(f'explorer /select,"{str(path)}"')
+        target = path if path.is_dir() else path.parent
+        key = platform_key()
+        if key == "windows":
+            if path.is_file():
+                subprocess.run(["explorer", f'/select,{str(path)}'], check=False)
+            else:
+                subprocess.run(["explorer", str(target)], check=False)
+        elif key == "macos":
+            subprocess.run(["open", str(target)], check=False)
+        else:
+            subprocess.run(["xdg-open", str(target)], check=False)
     except Exception:
         pass
+
+
+def ask_text(prompt: str, default: Optional[str] = None) -> str:
+    suffix = f" [{default}]" if default else ""
+    while True:
+        val = input(f"{prompt}{suffix}: ").strip()
+        if val:
+            return val
+        if default is not None:
+            return default
+        print("Wartość nie może być pusta.")
+
+
+def ask_float(prompt: str, default: float) -> float:
+    while True:
+        val = input(f"{prompt} [{default}]: ").strip()
+        if not val:
+            return default
+        try:
+            return float(val)
+        except ValueError:
+            print("Podaj liczbę, np. 120 lub 95.5")
+
+
+def ask_int(prompt: str, default: int) -> int:
+    while True:
+        val = input(f"{prompt} [{default}]: ").strip()
+        if not val:
+            return default
+        try:
+            return int(val)
+        except ValueError:
+            print("Podaj liczbę całkowitą.")
+
+
+def ask_yes_no(prompt: str, default: bool = False) -> bool:
+    opt = "Y/n" if default else "y/N"
+    while True:
+        val = input(f"{prompt} ({opt}): ").strip().lower()
+        if not val:
+            return default
+        if val in {"y", "yes", "t", "tak"}:
+            return True
+        if val in {"n", "no", "nie"}:
+            return False
+        print("Wpisz 'y' albo 'n'.")
+
+
+def choose_from_list(items: List[Path], title: str) -> Optional[Path]:
+    if not items:
+        return None
+    print(f"\n{title}")
+    for i, p in enumerate(items, 1):
+        print(f"  {i}. {p}")
+    print("  0. Anuluj")
+
+    while True:
+        val = input("Wybierz numer: ").strip()
+        try:
+            idx = int(val)
+        except ValueError:
+            print("Podaj numer.")
+            continue
+        if idx == 0:
+            return None
+        if 1 <= idx <= len(items):
+            return items[idx - 1]
+        print("Numer poza zakresem.")
+
+
+def find_csv_files(root: Path, limit: int = 30) -> List[Path]:
+    if not root.exists() or not root.is_dir():
+        return []
+    out = sorted(root.glob("*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return out[:limit]
+
+
+def cli_menu() -> None:
+    print("Blur Tool (menu CLI)")
+    print("--------------------")
+    print(f"Wykryta platforma: {platform_label()} ({sys.platform})")
+    print("Masz dostępne akcje: scan, review, compact.")
+
+    while True:
+        print("\nMenu:")
+        print("  1. Scan folder -> CSV")
+        print("  2. Review CSV (GUI)")
+        print("  3. Compact CSV (tylko pending)")
+        print("  4. Wyjście")
+
+        choice = input("Wybierz opcję [1-4]: ").strip()
+
+        if choice == "1":
+            root = Path(ask_text("Podaj folder ze zdjęciami (rekurencyjnie skanowany)")).expanduser()
+            if not root.exists() or not root.is_dir():
+                print(f"Niepoprawny folder: {root}")
+                continue
+
+            default_out = root / "blur_candidates.csv"
+            out_csv = Path(ask_text("Podaj ścieżkę wyjściowego CSV", str(default_out))).expanduser()
+            threshold = ask_float("Próg blur (mniej = bardziej rozmyte)", DEFAULT_THRESHOLD)
+            include_all = ask_yes_no("Dodać wszystkie zdjęcia do CSV (nie tylko rozmyte)?", default=False)
+            top = ask_int("TOP N najbardziej rozmytych (0 = bez limitu)", 0)
+
+            try:
+                cmd_scan(root=root, out_csv=out_csv, threshold=threshold, include_all=include_all, top=top)
+            except Exception as e:
+                print(f"Błąd scan: {e}")
+
+        elif choice == "2":
+            start_dir = Path(ask_text("Folder, w którym szukać plików CSV", str(Path.cwd()))).expanduser()
+            csv_candidates = find_csv_files(start_dir)
+            picked = choose_from_list(csv_candidates, "Znalezione CSV:") if csv_candidates else None
+            if picked is None:
+                csv_input = ask_text("Podaj ścieżkę do CSV ręcznie")
+                csv_path = Path(csv_input).expanduser()
+            else:
+                csv_path = picked
+
+            if not csv_path.exists():
+                print(f"CSV nie istnieje: {csv_path}")
+                continue
+
+            hard_delete = ask_yes_no("Usuwać na stałe zamiast przenosić do kosza?", default=False)
+            show_raw = ask_text(
+                "Statusy do pokazania (lista po przecinku)",
+                "pending",
+            )
+            show = tuple(s.strip().lower() for s in show_raw.split(",") if s.strip()) or (STATUS_PENDING,)
+            print(f"Loaded queue from: {csv_path}")
+            print(f"Decisions log: {decisions_path_for(csv_path)}")
+            print("GUI: Right/Enter=Keep | D=Delete | K=Trash | O=Open folder | Esc=Exit")
+            try:
+                tk_review(csv_path=csv_path, hard_delete=hard_delete, show_statuses=show)
+            except Exception as e:
+                print(f"Błąd review: {e}")
+
+        elif choice == "3":
+            start_dir = Path(ask_text("Folder, w którym szukać plików CSV", str(Path.cwd()))).expanduser()
+            csv_candidates = find_csv_files(start_dir)
+            picked = choose_from_list(csv_candidates, "Znalezione CSV:") if csv_candidates else None
+            if picked is None:
+                csv_input = ask_text("Podaj ścieżkę do CSV ręcznie")
+                csv_path = Path(csv_input).expanduser()
+            else:
+                csv_path = picked
+
+            if not csv_path.exists():
+                print(f"CSV nie istnieje: {csv_path}")
+                continue
+            try:
+                cmd_compact(csv_path=csv_path)
+            except Exception as e:
+                print(f"Błąd compact: {e}")
+
+        elif choice == "4":
+            print("Koniec.")
+            return
+        else:
+            print("Nieznana opcja. Wybierz 1-4.")
 
 
 def decisions_path_for(csv_path: Path) -> Path:
@@ -368,6 +570,11 @@ def cmd_compact(csv_path: Path) -> None:
 
 
 def tk_review(csv_path: Path, hard_delete: bool, show_statuses: Tuple[str, ...]) -> None:
+    if not gui_available():
+        print("GUI niedostępne: brak sesji graficznej (DISPLAY/WAYLAND_DISPLAY).")
+        print("Uruchom narzędzie w środowisku desktopowym albo użyj opcji scan/compact.")
+        return
+
     import tkinter as tk
     from tkinter import messagebox
     from PIL import ImageTk  # must be inside Tk context
@@ -472,7 +679,7 @@ def tk_review(csv_path: Path, hard_delete: bool, show_statuses: Tuple[str, ...])
             return
         c = queue[idx]
         if send2trash is None:
-            messagebox.showerror("Brak modułu", "Brak send2trash. Zainstaluj: py -m pip install send2trash")
+            messagebox.showerror("Brak modułu", f"Brak send2trash. Zainstaluj: {pip_install_hint('send2trash')}")
             return
         try:
             send2trash(str(c.path))
@@ -490,7 +697,7 @@ def tk_review(csv_path: Path, hard_delete: bool, show_statuses: Tuple[str, ...])
                 skip_current(STATUS_DELETED)
             else:
                 if send2trash is None:
-                    messagebox.showerror("Brak modułu", "Brak send2trash. Zainstaluj: py -m pip install send2trash")
+                    messagebox.showerror("Brak modułu", f"Brak send2trash. Zainstaluj: {pip_install_hint('send2trash')}")
                     return
                 send2trash(str(c.path))
                 skip_current(STATUS_TRASHED)
@@ -533,7 +740,8 @@ def tk_review(csv_path: Path, hard_delete: bool, show_statuses: Tuple[str, ...])
 
 def main():
     p = argparse.ArgumentParser(description="Blur scanner + reviewer (v2, OneDrive-friendly, resumable).")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    p.add_argument("--menu", action="store_true", help="Start interactive CLI menu.")
+    sub = p.add_subparsers(dest="cmd")
 
     ps = sub.add_parser("scan", help="Scan folder and write CSV of blur candidates.")
     ps.add_argument("--root", required=True, help="Root folder with photos (recursive).")
@@ -552,6 +760,10 @@ def main():
     pc.add_argument("--csv", required=True, help="Candidates CSV to compact.")
 
     args = p.parse_args()
+
+    if args.menu or not args.cmd:
+        cli_menu()
+        return
 
     if args.cmd == "scan":
         cmd_scan(Path(args.root), Path(args.out), float(args.threshold), bool(args.include_all), int(args.top))
