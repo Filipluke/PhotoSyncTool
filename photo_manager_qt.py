@@ -29,7 +29,7 @@ except Exception:
     send2trash = None
 
 try:
-    from PySide6.QtCore import QTimer
+    from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QCloseEvent
     from PySide6.QtWidgets import (
         QApplication,
@@ -45,6 +45,7 @@ try:
         QMainWindow,
         QMessageBox,
         QListWidget,
+        QScrollArea,
         QSplitter,
         QPlainTextEdit,
         QPushButton,
@@ -362,6 +363,7 @@ class PhotoManagerWindow(QMainWindow):
         workspace_splitter.setChildrenCollapsible(False)
 
         left_panel = QWidget()
+        left_panel.setObjectName("settingsPanel")
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
@@ -448,6 +450,15 @@ class PhotoManagerWindow(QMainWindow):
         left_layout.addWidget(blur_group)
         left_layout.addStretch(1)
 
+        left_scroll = QScrollArea()
+        left_scroll.setObjectName("settingsScroll")
+        left_scroll.viewport().setObjectName("settingsViewport")
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        left_scroll.setMinimumWidth(340)
+        left_scroll.setWidget(left_panel)
+
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -484,7 +495,7 @@ class PhotoManagerWindow(QMainWindow):
         compare_layout.addWidget(preview_split)
         right_layout.addWidget(compare_group, stretch=1)
 
-        workspace_splitter.addWidget(left_panel)
+        workspace_splitter.addWidget(left_scroll)
         workspace_splitter.addWidget(right_panel)
         workspace_splitter.setSizes([360, 860])
         main_layout.addWidget(workspace_splitter, stretch=1)
@@ -493,8 +504,9 @@ class PhotoManagerWindow(QMainWindow):
         log_layout = QVBoxLayout(log_group)
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
+        self.log_view.setMinimumHeight(90)
         log_layout.addWidget(self.log_view)
-        main_layout.addWidget(log_group, stretch=1)
+        main_layout.addWidget(log_group)
 
         self.save_settings_btn.clicked.connect(self.on_save_settings)
         self.compare_btn.clicked.connect(self.on_compare_preview)
@@ -523,6 +535,35 @@ class PhotoManagerWindow(QMainWindow):
         self.setStyleSheet(
             """
             QMainWindow { background: #191c22; color: #d7dde8; }
+            QWidget { color: #d7dde8; }
+            QLabel { color: #cdd4e2; }
+            QScrollArea#settingsScroll {
+                border: none;
+                background: #191c22;
+            }
+            QWidget#settingsViewport, QWidget#settingsPanel {
+                background: #191c22;
+            }
+            QScrollBar:vertical {
+                background: #15181e;
+                border-left: 1px solid #3a3f49;
+                width: 12px;
+                margin: 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #526078;
+                border-radius: 5px;
+                min-height: 28px;
+            }
+            QScrollBar::handle:vertical:hover { background: #65748e; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                border: none;
+                background: transparent;
+                height: 0;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: #15181e;
+            }
             QGroupBox {
                 border: 1px solid #3a3f49;
                 border-radius: 7px;
