@@ -61,6 +61,7 @@ except Exception as exc:
 CONFIG_FILE_NAME = "photo_manager_config.json"
 SYNC_LOG_NAME = "photo_manager_sync_log.csv"
 BLUR_SCRIPT_NAME = "blur_tool.py"
+WINDOWS_RUN_VALUE_NAME = "PhotoManagerPro"
 
 DATE_SOURCES = ("exif", "mtime", "ctime")
 PENDING_STATUS = "pending"
@@ -77,6 +78,7 @@ class AppConfig:
     dry_run: bool
     delete_after_sync: bool
     watch_delete: bool
+    sync_allowed_hours: str
     settle_seconds: float
     stable_checks: int
     poll_interval: float
@@ -86,6 +88,7 @@ class AppConfig:
     auto_delete_max: int
     auto_delete_hard: bool
     autostart_background: bool
+    autostart_windows: bool
 
 
 @dataclass
@@ -99,6 +102,7 @@ class RuntimeConfig:
     dry_run: bool
     delete_after_sync: bool
     watch_delete: bool
+    sync_allowed_hours: str
     settle_seconds: float
     stable_checks: int
     poll_interval: float
@@ -116,7 +120,10 @@ class SyncWatchService:
         self.running = False
         self.cfg: Optional[RuntimeConfig] = None
         self._recent: Dict[str, float] = {}
+        self._pending: Dict[str, Path] = {}
         self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._scheduler_thread: Optional[threading.Thread] = None
 
     def start(self, cfg: RuntimeConfig) -> None:
         if self.running:
@@ -136,6 +143,8 @@ class SyncWatchService:
 
         self.cfg = cfg
         self._recent.clear()
+        self._pending.clear()
+        self._stop_event.clear()
         service = self
 
         class Handler(FileSystemEventHandler):
@@ -157,6 +166,8 @@ class SyncWatchService:
         self.observer.schedule(Handler(), str(cfg.source), recursive=cfg.recursive)
         self.observer.start()
         self.running = True
+        self._scheduler_thread = threading.Thread(target=self._run_pending_loop, daemon=True)
+        self._scheduler_thread.start()
         self.app.log(f"Background sync started. Watching: {cfg.source}")
 
     def stop(self) -> None:
@@ -165,12 +176,36 @@ class SyncWatchService:
         try:
             if self.observer is not None:
                 self.observer.stop()
+                self._stop_event.set()
                 self.observer.join(timeout=5)
+                if self._scheduler_thread is not None:
+                    self._scheduler_thread.join(timeout=3)
         finally:
             self.observer = None
+            self._scheduler_thread = None
             self.running = False
             self.cfg = None
             self.app.log("Background sync stopped.")
+
+    def _defer_path(self, path: Path) -> None:
+        with self._lock:
+            already_pending = str(path) in self._pending
+            self._pending[str(path)] = path
+        if not already_pending:
+            self.app.log(f"[watch] Deferred outside sync schedule: {path.name}")
+
+    def _run_pending_loop(self) -> None:
+        while not self._stop_event.wait(60):
+            cfg = self.cfg
+            if cfg is None or not self.app.is_sync_time_allowed(cfg):
+                continue
+            with self._lock:
+                pending = list(self._pending.values())
+                self._pending.clear()
+            if pending:
+                self.app.log(f"[watch] Processing deferred files: {len(pending)}")
+            for path in pending:
+                self.process_path(path)
 
     def _should_skip_recent(self, path: Path, cooldown_s: float = 2.0) -> bool:
         key = str(path)
@@ -199,6 +234,9 @@ class SyncWatchService:
         if cfg.source not in path.parents and path != cfg.source:
             return
         if not is_media_file(path, include_nonmedia=cfg.include_nonmedia):
+            return
+        if not self.app.is_sync_time_allowed(cfg):
+            self._defer_path(path)
             return
 
         stable = ensure_file_stable(
@@ -390,18 +428,21 @@ class PhotoManagerWindow(QMainWindow):
 
         self.date_source_combo = QComboBox()
         self.date_source_combo.addItems(list(DATE_SOURCES))
+        self.sync_hours_edit = QLineEdit("0-24")
         self.settle_edit = QLineEdit("1.5")
         self.stable_checks_edit = QLineEdit("3")
         self.poll_interval_edit = QLineEdit("0.5")
 
         sync_layout.addWidget(QLabel("Date source"), 0, 0)
         sync_layout.addWidget(self.date_source_combo, 0, 1)
-        sync_layout.addWidget(QLabel("Settle"), 1, 0)
-        sync_layout.addWidget(self.settle_edit, 1, 1)
-        sync_layout.addWidget(QLabel("Stable checks"), 2, 0)
-        sync_layout.addWidget(self.stable_checks_edit, 2, 1)
-        sync_layout.addWidget(QLabel("Poll interval"), 3, 0)
-        sync_layout.addWidget(self.poll_interval_edit, 3, 1)
+        sync_layout.addWidget(QLabel("Sync hours"), 1, 0)
+        sync_layout.addWidget(self.sync_hours_edit, 1, 1)
+        sync_layout.addWidget(QLabel("Settle"), 2, 0)
+        sync_layout.addWidget(self.settle_edit, 2, 1)
+        sync_layout.addWidget(QLabel("Stable checks"), 3, 0)
+        sync_layout.addWidget(self.stable_checks_edit, 3, 1)
+        sync_layout.addWidget(QLabel("Poll interval"), 4, 0)
+        sync_layout.addWidget(self.poll_interval_edit, 4, 1)
 
         self.recursive_check = QCheckBox("Recursive source scan")
         self.include_nonmedia_check = QCheckBox("Include non-media files")
@@ -410,14 +451,16 @@ class PhotoManagerWindow(QMainWindow):
         self.delete_after_sync_check = QCheckBox("Delete source after batch sync")
         self.watch_delete_check = QCheckBox("Delete source in background sync")
         self.autostart_background_check = QCheckBox("Autostart background on launch")
+        self.autostart_windows_check = QCheckBox("Open on Windows startup")
 
-        sync_layout.addWidget(self.recursive_check, 4, 0, 1, 2)
-        sync_layout.addWidget(self.include_nonmedia_check, 5, 0, 1, 2)
-        sync_layout.addWidget(self.full_hash_check, 6, 0, 1, 2)
-        sync_layout.addWidget(self.dry_run_check, 7, 0, 1, 2)
-        sync_layout.addWidget(self.delete_after_sync_check, 8, 0, 1, 2)
-        sync_layout.addWidget(self.watch_delete_check, 9, 0, 1, 2)
-        sync_layout.addWidget(self.autostart_background_check, 10, 0, 1, 2)
+        sync_layout.addWidget(self.recursive_check, 5, 0, 1, 2)
+        sync_layout.addWidget(self.include_nonmedia_check, 6, 0, 1, 2)
+        sync_layout.addWidget(self.full_hash_check, 7, 0, 1, 2)
+        sync_layout.addWidget(self.dry_run_check, 8, 0, 1, 2)
+        sync_layout.addWidget(self.delete_after_sync_check, 9, 0, 1, 2)
+        sync_layout.addWidget(self.watch_delete_check, 10, 0, 1, 2)
+        sync_layout.addWidget(self.autostart_background_check, 11, 0, 1, 2)
+        sync_layout.addWidget(self.autostart_windows_check, 12, 0, 1, 2)
         left_layout.addWidget(sync_group)
 
         blur_group = QGroupBox("Blur Tools")
@@ -644,6 +687,7 @@ class PhotoManagerWindow(QMainWindow):
             dry_run=False,
             delete_after_sync=False,
             watch_delete=False,
+            sync_allowed_hours="0-24",
             settle_seconds=1.5,
             stable_checks=3,
             poll_interval=0.5,
@@ -653,6 +697,7 @@ class PhotoManagerWindow(QMainWindow):
             auto_delete_max=50,
             auto_delete_hard=False,
             autostart_background=False,
+            autostart_windows=self._is_windows_startup_enabled(),
         )
 
     def _load_config(self) -> AppConfig:
@@ -682,6 +727,7 @@ class PhotoManagerWindow(QMainWindow):
         self.delete_after_sync_check.setChecked(bool(cfg.delete_after_sync))
         self.watch_delete_check.setChecked(bool(cfg.watch_delete))
         self.autostart_background_check.setChecked(bool(cfg.autostart_background))
+        self.sync_hours_edit.setText(str(cfg.sync_allowed_hours or "0-24"))
         self.settle_edit.setText(str(cfg.settle_seconds))
         self.stable_checks_edit.setText(str(cfg.stable_checks))
         self.poll_interval_edit.setText(str(cfg.poll_interval))
@@ -689,6 +735,10 @@ class PhotoManagerWindow(QMainWindow):
         self.blur_top_edit.setText(str(cfg.blur_top))
         self.auto_delete_max_edit.setText(str(cfg.auto_delete_max))
         self.auto_delete_hard_check.setChecked(bool(cfg.auto_delete_hard))
+        self.autostart_windows_check.setChecked(bool(cfg.autostart_windows))
+        if sys.platform != "win32":
+            self.autostart_windows_check.setEnabled(False)
+            self.autostart_windows_check.setToolTip("Windows-only option.")
 
     def _build_config_from_widgets(self) -> AppConfig:
         return AppConfig(
@@ -701,6 +751,7 @@ class PhotoManagerWindow(QMainWindow):
             dry_run=self.dry_run_check.isChecked(),
             delete_after_sync=self.delete_after_sync_check.isChecked(),
             watch_delete=self.watch_delete_check.isChecked(),
+            sync_allowed_hours=self.sync_hours_edit.text().strip() or "0-24",
             settle_seconds=self._parse_float(self.settle_edit.text(), "Settle seconds", 0.0),
             stable_checks=self._parse_int(self.stable_checks_edit.text(), "Stable checks", 1),
             poll_interval=self._parse_float(self.poll_interval_edit.text(), "Poll interval", 0.05),
@@ -710,12 +761,14 @@ class PhotoManagerWindow(QMainWindow):
             auto_delete_max=self._parse_int(self.auto_delete_max_edit.text(), "Auto delete max", 0),
             auto_delete_hard=self.auto_delete_hard_check.isChecked(),
             autostart_background=self.autostart_background_check.isChecked(),
+            autostart_windows=self.autostart_windows_check.isChecked(),
         )
 
     def _resolve_runtime_config(self) -> RuntimeConfig:
         cfg = self._build_config_from_widgets()
         if cfg.date_source not in DATE_SOURCES:
             raise ValueError("Date source must be one of: exif, mtime, ctime")
+        self._parse_hour_windows(cfg.sync_allowed_hours)
 
         root_path = Path(cfg.root_dir).expanduser()
         if not root_path.is_absolute():
@@ -747,6 +800,7 @@ class PhotoManagerWindow(QMainWindow):
             dry_run=cfg.dry_run,
             delete_after_sync=cfg.delete_after_sync,
             watch_delete=cfg.watch_delete,
+            sync_allowed_hours=cfg.sync_allowed_hours,
             settle_seconds=cfg.settle_seconds,
             stable_checks=cfg.stable_checks,
             poll_interval=cfg.poll_interval,
@@ -774,6 +828,39 @@ class PhotoManagerWindow(QMainWindow):
         if value < minimum:
             raise ValueError(f"{name} must be >= {minimum}")
         return value
+
+    def _parse_hour_windows(self, raw: str) -> List[tuple[int, int]]:
+        text = (raw or "0-24").strip()
+        windows: List[tuple[int, int]] = []
+        for part in text.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "-" not in part:
+                raise ValueError("Sync hours must use ranges like 0-24, 8-18, or 22-7")
+            start_raw, end_raw = part.split("-", 1)
+            try:
+                start = int(start_raw.strip())
+                end = int(end_raw.strip())
+            except Exception as exc:
+                raise ValueError(f"Invalid sync hour range: {part}") from exc
+            if not (0 <= start <= 23 and 0 <= end <= 24):
+                raise ValueError(f"Sync hour range out of bounds: {part}")
+            if start == end:
+                raise ValueError(f"Sync hour range cannot be empty: {part}")
+            windows.append((start, end))
+        if not windows:
+            raise ValueError("Sync hours cannot be empty")
+        return windows
+
+    def is_sync_time_allowed(self, cfg: RuntimeConfig) -> bool:
+        hour = int(time.strftime("%H"))
+        for start, end in self._parse_hour_windows(cfg.sync_allowed_hours):
+            if start < end and start <= hour < end:
+                return True
+            if start > end and (hour >= start or hour < end):
+                return True
+        return False
 
     def _get_runtime_or_message(self) -> Optional[RuntimeConfig]:
         try:
@@ -842,11 +929,60 @@ class PhotoManagerWindow(QMainWindow):
         self.worker_thread = threading.Thread(target=run, daemon=True)
         self.worker_thread.start()
 
+    def _startup_command(self) -> str:
+        exe = Path(sys.executable)
+        if exe.name.lower() == "python.exe":
+            pythonw = exe.with_name("pythonw.exe")
+            if pythonw.exists():
+                exe = pythonw
+        return f'"{exe}" "{self.script_dir / "photo_manager_gui.py"}"'
+
+    def _is_windows_startup_enabled(self) -> bool:
+        if sys.platform != "win32":
+            return False
+        try:
+            import winreg
+
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
+                value, _value_type = winreg.QueryValueEx(key, WINDOWS_RUN_VALUE_NAME)
+            return str(value).strip() == self._startup_command()
+        except FileNotFoundError:
+            return False
+        except Exception:
+            return False
+
+    def _set_windows_startup(self, enabled: bool) -> None:
+        if sys.platform != "win32":
+            return
+        try:
+            import winreg
+
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Run",
+                0,
+                winreg.KEY_SET_VALUE,
+            ) as key:
+                if enabled:
+                    winreg.SetValueEx(key, WINDOWS_RUN_VALUE_NAME, 0, winreg.REG_SZ, self._startup_command())
+                else:
+                    try:
+                        winreg.DeleteValue(key, WINDOWS_RUN_VALUE_NAME)
+                    except FileNotFoundError:
+                        pass
+        except Exception as exc:
+            raise RuntimeError(f"Could not update Windows startup setting: {exc}") from exc
+
     def _persist_settings(self, show_message: bool) -> bool:
         try:
             cfg = self._build_config_from_widgets()
+            self._set_windows_startup(cfg.autostart_windows)
             self.config_path.write_text(json.dumps(cfg.__dict__, ensure_ascii=False, indent=2), encoding="utf-8")
             self.log(f"Settings saved to: {self.config_path}")
+            self.log(
+                "Windows startup: "
+                + ("enabled" if self._is_windows_startup_enabled() else "disabled")
+            )
             if show_message:
                 QMessageBox.information(self, "Saved", f"Settings saved to:\n{self.config_path}")
             return True
