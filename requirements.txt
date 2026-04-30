@@ -4,3 +4,4 @@ opencv-python
 numpy
 Send2Trash
 watchdog
+pywin32; platform_system == "Windows"

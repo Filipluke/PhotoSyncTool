@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import queue
@@ -12,9 +13,26 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from photo_manager_core import (
+    DAY_KEYS,
+    DAY_LABELS,
+    parse_weekly_hours,
+    run_batch_sync,
+    serialize_weekly_hours,
+    weekly_schedule_summary,
+)
+from photo_manager_index import (
+    default_index_path,
+    import_blur_csv,
+    index_sync_records,
+    rebuild_index,
+    update_blur_status,
+    update_file_status,
+)
 from sort_photos_script import (
     ensure_file_stable,
     is_media_file,
@@ -30,22 +48,31 @@ except Exception:
 
 try:
     from PySide6.QtCore import Qt, QTimer
-    from PySide6.QtGui import QCloseEvent
+    from PySide6.QtGui import QAction, QColor, QCloseEvent
     from PySide6.QtWidgets import (
         QApplication,
+        QAbstractItemView,
         QCheckBox,
         QComboBox,
+        QDialog,
+        QDialogButtonBox,
         QFileDialog,
         QFormLayout,
         QGridLayout,
         QGroupBox,
+        QHeaderView,
         QHBoxLayout,
         QLabel,
         QLineEdit,
         QMainWindow,
+        QMenu,
         QMessageBox,
         QListWidget,
         QScrollArea,
+        QStyle,
+        QSystemTrayIcon,
+        QTableWidget,
+        QTableWidgetItem,
         QSplitter,
         QPlainTextEdit,
         QPushButton,
@@ -79,6 +106,7 @@ class AppConfig:
     delete_after_sync: bool
     watch_delete: bool
     sync_allowed_hours: str
+    sync_weekly_hours: str
     settle_seconds: float
     stable_checks: int
     poll_interval: float
@@ -89,6 +117,8 @@ class AppConfig:
     auto_delete_hard: bool
     autostart_background: bool
     autostart_windows: bool
+    start_minimized: bool
+    minimize_to_tray: bool
 
 
 @dataclass
@@ -103,6 +133,7 @@ class RuntimeConfig:
     delete_after_sync: bool
     watch_delete: bool
     sync_allowed_hours: str
+    sync_weekly_hours: str
     settle_seconds: float
     stable_checks: int
     poll_interval: float
@@ -111,6 +142,194 @@ class RuntimeConfig:
     blur_top: int
     auto_delete_max: int
     auto_delete_hard: bool
+
+
+class WeeklyScheduleDialog(QDialog):
+    def __init__(self, schedule_text: str, fallback_hours: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Weekly Sync Schedule")
+        self.resize(980, 420)
+
+        self.table = QTableWidget(7, 24)
+        self.table.setHorizontalHeaderLabels([f"{h:02d}" for h in range(24)])
+        self.table.setVerticalHeaderLabels([DAY_LABELS[day] for day in DAY_KEYS])
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.cellClicked.connect(self._toggle_cell)
+        self._use_daily_hours = False
+
+        layout = QVBoxLayout(self)
+        hint = QLabel("Click hours to allow or block background synchronization.")
+        hint.setObjectName("scheduleHint")
+        layout.addWidget(hint)
+        layout.addWidget(self.table, stretch=1)
+
+        preset_row = QHBoxLayout()
+        self.allow_all_btn = QPushButton("Allow All")
+        self.clear_all_btn = QPushButton("Block All")
+        self.workday_btn = QPushButton("Workdays 08-18")
+        self.night_btn = QPushButton("Nights 22-07")
+        self.use_daily_btn = QPushButton("Use Daily Hours")
+        for btn in (
+            self.allow_all_btn,
+            self.clear_all_btn,
+            self.workday_btn,
+            self.night_btn,
+            self.use_daily_btn,
+        ):
+            btn.setObjectName("secondaryAction")
+            preset_row.addWidget(btn)
+        preset_row.addStretch(1)
+        layout.addLayout(preset_row)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.allow_all_btn.clicked.connect(lambda: self._fill_all(True))
+        self.clear_all_btn.clicked.connect(lambda: self._fill_all(False))
+        self.workday_btn.clicked.connect(self._preset_workdays)
+        self.night_btn.clicked.connect(self._preset_nights)
+        self.use_daily_btn.clicked.connect(self._accept_daily_hours)
+
+        self._init_cells(schedule_text, fallback_hours)
+        self.setStyleSheet(
+            """
+            QDialog { background: #191c22; color: #d7dde8; }
+            QLabel#scheduleHint { color: #cdd4e2; padding: 4px; }
+            QTableWidget {
+                gridline-color: #343a46;
+                background: #1f232b;
+                alternate-background-color: #252a34;
+                color: #d7dde8;
+                border: 1px solid #3a3f49;
+            }
+            QHeaderView::section {
+                background: #2a3039;
+                color: #d7dde8;
+                border: 1px solid #3a3f49;
+                padding: 4px;
+            }
+            QPushButton {
+                background: #2a3448;
+                border: 1px solid #4a5e84;
+                border-radius: 5px;
+                padding: 6px 10px;
+                color: #dce8ff;
+            }
+            QPushButton:hover { background: #334464; }
+            """
+        )
+
+    def _init_cells(self, schedule_text: str, fallback_hours: str) -> None:
+        try:
+            schedule = parse_weekly_hours(schedule_text)
+        except Exception:
+            schedule = {}
+        fallback = self._safe_windows(fallback_hours)
+        for row, day in enumerate(DAY_KEYS):
+            windows = schedule[day] if day in schedule else fallback
+            for hour in range(24):
+                item = QTableWidgetItem("")
+                item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                self.table.setItem(row, hour, item)
+                self._set_allowed(item, self._hour_allowed(hour, windows))
+
+    def _safe_windows(self, raw: str) -> List[tuple[int, int]]:
+        parent = self.parent()
+        try:
+            return parent._parse_hour_windows(raw)  # type: ignore[attr-defined]
+        except Exception:
+            return [(0, 24)]
+
+    def _hour_allowed(self, hour: int, windows: List[tuple[int, int]]) -> bool:
+        for start, end in windows:
+            if start < end and start <= hour < end:
+                return True
+            if start > end and (hour >= start or hour < end):
+                return True
+        return False
+
+    def _set_allowed(self, item: QTableWidgetItem, allowed: bool) -> None:
+        item.setData(Qt.ItemDataRole.UserRole, allowed)
+        if allowed:
+            item.setBackground(QColor("#23704a"))
+            item.setToolTip("Sync allowed")
+        else:
+            item.setBackground(QColor("#2b303a"))
+            item.setToolTip("Sync blocked")
+
+    def _toggle_item(self, item: QTableWidgetItem) -> None:
+        self._set_allowed(item, not bool(item.data(Qt.ItemDataRole.UserRole)))
+
+    def _toggle_cell(self, row: int, column: int) -> None:
+        item = self.table.item(row, column)
+        if item is not None:
+            self._toggle_item(item)
+
+    def _fill_all(self, allowed: bool) -> None:
+        for row in range(7):
+            for col in range(24):
+                item = self.table.item(row, col)
+                if item is not None:
+                    self._set_allowed(item, allowed)
+
+    def _preset_workdays(self) -> None:
+        self._fill_all(False)
+        for row in range(5):
+            for hour in range(8, 18):
+                item = self.table.item(row, hour)
+                if item is not None:
+                    self._set_allowed(item, True)
+
+    def _preset_nights(self) -> None:
+        self._fill_all(False)
+        for row in range(7):
+            for hour in list(range(0, 7)) + [22, 23]:
+                item = self.table.item(row, hour)
+                if item is not None:
+                    self._set_allowed(item, True)
+
+    def _accept_daily_hours(self) -> None:
+        self._use_daily_hours = True
+        self.accept()
+
+    def schedule_text(self) -> str:
+        if self._use_daily_hours:
+            return ""
+        schedule: Dict[str, List[tuple[int, int]]] = {}
+        for row, day in enumerate(DAY_KEYS):
+            allowed = [
+                bool(self.table.item(row, hour).data(Qt.ItemDataRole.UserRole))
+                for hour in range(24)
+            ]
+            schedule[day] = self._ranges_from_allowed(allowed)
+        return serialize_weekly_hours(schedule)
+
+    def _ranges_from_allowed(self, allowed: List[bool]) -> List[tuple[int, int]]:
+        if all(allowed):
+            return [(0, 24)]
+        if not any(allowed):
+            return []
+
+        ranges: List[tuple[int, int]] = []
+        start = None
+        for hour, is_allowed in enumerate(allowed):
+            if is_allowed and start is None:
+                start = hour
+            if (not is_allowed or hour == 23) and start is not None:
+                end = hour + 1 if is_allowed and hour == 23 else hour
+                ranges.append((start, end))
+                start = None
+
+        if len(ranges) >= 2 and ranges[0][0] == 0 and ranges[-1][1] == 24:
+            first = ranges.pop(0)
+            last = ranges.pop()
+            ranges.insert(0, (last[0], first[1]))
+        return ranges
 
 
 class SyncWatchService:
@@ -269,6 +488,16 @@ class SyncWatchService:
                     }
                 )
             self.app.append_sync_records(cfg.root, records)
+            try:
+                index_sync_records(
+                    cfg.root,
+                    records,
+                    date_source=cfg.date_source,
+                    compute_hash=cfg.full_hash,
+                    log=self.app.log,
+                )
+            except Exception as exc:
+                self.app.log(f"[watch] Index update skipped: {exc}")
             self.app.log(f"[watch][dry-run] {path.name} -> {len(action.dsts)} destinations")
             return
 
@@ -313,6 +542,16 @@ class SyncWatchService:
                 self.app.log(f"[watch] Verify error for {dst.name}: {exc}")
 
         self.app.append_sync_records(cfg.root, records)
+        try:
+            index_sync_records(
+                cfg.root,
+                records,
+                date_source=cfg.date_source,
+                compute_hash=cfg.full_hash,
+                log=self.app.log,
+            )
+        except Exception as exc:
+            self.app.log(f"[watch] Index update skipped: {exc}")
 
         if all_ok:
             msg = f"[watch] Synced: {path.name} -> year {action.year}"
@@ -327,6 +566,10 @@ class SyncWatchService:
         if all_ok and cfg.watch_delete:
             try:
                 path.unlink(missing_ok=True)
+                try:
+                    update_file_status(cfg.root, path, status="deleted")
+                except Exception as exc:
+                    self.app.log(f"[watch] Index source status skipped: {path.name} ({exc})")
                 self.app.log(f"[watch] Deleted source after sync: {path.name}")
             except Exception as exc:
                 self.app.log(f"[watch] Could not delete source {path.name}: {exc}")
@@ -337,6 +580,9 @@ class PhotoManagerWindow(QMainWindow):
         super().__init__()
         self.script_dir = Path(__file__).resolve().parent
         self.config_path = self.script_dir / CONFIG_FILE_NAME
+        self._allow_real_close = False
+        self.tray_icon: Optional[QSystemTrayIcon] = None
+        self.sync_weekly_hours = ""
 
         self.log_queue: "queue.Queue[str]" = queue.Queue()
         self.log_lock = threading.Lock()
@@ -350,6 +596,7 @@ class PhotoManagerWindow(QMainWindow):
         self.resize(1240, 900)
         self._build_ui()
         self._apply_theme()
+        self._build_tray()
 
         loaded_cfg = self._load_config()
         self._apply_config(loaded_cfg)
@@ -429,6 +676,10 @@ class PhotoManagerWindow(QMainWindow):
         self.date_source_combo = QComboBox()
         self.date_source_combo.addItems(list(DATE_SOURCES))
         self.sync_hours_edit = QLineEdit("0-24")
+        self.schedule_summary_label = QLabel("Using daily hours: 0-24")
+        self.schedule_summary_label.setObjectName("pathLabel")
+        self.edit_schedule_btn = QPushButton("Weekly Schedule")
+        self.edit_schedule_btn.setObjectName("secondaryAction")
         self.settle_edit = QLineEdit("1.5")
         self.stable_checks_edit = QLineEdit("3")
         self.poll_interval_edit = QLineEdit("0.5")
@@ -437,12 +688,20 @@ class PhotoManagerWindow(QMainWindow):
         sync_layout.addWidget(self.date_source_combo, 0, 1)
         sync_layout.addWidget(QLabel("Sync hours"), 1, 0)
         sync_layout.addWidget(self.sync_hours_edit, 1, 1)
-        sync_layout.addWidget(QLabel("Settle"), 2, 0)
-        sync_layout.addWidget(self.settle_edit, 2, 1)
-        sync_layout.addWidget(QLabel("Stable checks"), 3, 0)
-        sync_layout.addWidget(self.stable_checks_edit, 3, 1)
-        sync_layout.addWidget(QLabel("Poll interval"), 4, 0)
-        sync_layout.addWidget(self.poll_interval_edit, 4, 1)
+        schedule_row = QWidget()
+        schedule_row_layout = QHBoxLayout(schedule_row)
+        schedule_row_layout.setContentsMargins(0, 0, 0, 0)
+        schedule_row_layout.setSpacing(6)
+        schedule_row_layout.addWidget(self.schedule_summary_label, stretch=1)
+        schedule_row_layout.addWidget(self.edit_schedule_btn)
+        sync_layout.addWidget(QLabel("Schedule"), 2, 0)
+        sync_layout.addWidget(schedule_row, 2, 1)
+        sync_layout.addWidget(QLabel("Settle"), 3, 0)
+        sync_layout.addWidget(self.settle_edit, 3, 1)
+        sync_layout.addWidget(QLabel("Stable checks"), 4, 0)
+        sync_layout.addWidget(self.stable_checks_edit, 4, 1)
+        sync_layout.addWidget(QLabel("Poll interval"), 5, 0)
+        sync_layout.addWidget(self.poll_interval_edit, 5, 1)
 
         self.recursive_check = QCheckBox("Recursive source scan")
         self.include_nonmedia_check = QCheckBox("Include non-media files")
@@ -452,16 +711,68 @@ class PhotoManagerWindow(QMainWindow):
         self.watch_delete_check = QCheckBox("Delete source in background sync")
         self.autostart_background_check = QCheckBox("Autostart background on launch")
         self.autostart_windows_check = QCheckBox("Open on Windows startup")
+        self.start_minimized_check = QCheckBox("Windows startup opens minimized")
+        self.minimize_to_tray_check = QCheckBox("Close button hides to tray")
 
-        sync_layout.addWidget(self.recursive_check, 5, 0, 1, 2)
-        sync_layout.addWidget(self.include_nonmedia_check, 6, 0, 1, 2)
-        sync_layout.addWidget(self.full_hash_check, 7, 0, 1, 2)
-        sync_layout.addWidget(self.dry_run_check, 8, 0, 1, 2)
-        sync_layout.addWidget(self.delete_after_sync_check, 9, 0, 1, 2)
-        sync_layout.addWidget(self.watch_delete_check, 10, 0, 1, 2)
-        sync_layout.addWidget(self.autostart_background_check, 11, 0, 1, 2)
-        sync_layout.addWidget(self.autostart_windows_check, 12, 0, 1, 2)
+        sync_layout.addWidget(self.recursive_check, 6, 0, 1, 2)
+        sync_layout.addWidget(self.include_nonmedia_check, 7, 0, 1, 2)
+        sync_layout.addWidget(self.full_hash_check, 8, 0, 1, 2)
+        sync_layout.addWidget(self.dry_run_check, 9, 0, 1, 2)
+        sync_layout.addWidget(self.delete_after_sync_check, 10, 0, 1, 2)
+        sync_layout.addWidget(self.watch_delete_check, 11, 0, 1, 2)
+        sync_layout.addWidget(self.autostart_background_check, 12, 0, 1, 2)
+        sync_layout.addWidget(self.autostart_windows_check, 13, 0, 1, 2)
+        sync_layout.addWidget(self.start_minimized_check, 14, 0, 1, 2)
+        sync_layout.addWidget(self.minimize_to_tray_check, 15, 0, 1, 2)
         left_layout.addWidget(sync_group)
+
+        service_group = QGroupBox("Windows Service")
+        service_layout = QGridLayout(service_group)
+        service_layout.setHorizontalSpacing(8)
+        service_layout.setVerticalSpacing(6)
+        self.install_service_btn = QPushButton("Install")
+        self.start_service_btn = QPushButton("Start")
+        self.stop_service_btn = QPushButton("Stop")
+        self.uninstall_service_btn = QPushButton("Uninstall")
+        for btn in (
+            self.install_service_btn,
+            self.start_service_btn,
+            self.stop_service_btn,
+            self.uninstall_service_btn,
+        ):
+            btn.setObjectName("secondaryAction")
+        service_layout.addWidget(self.install_service_btn, 0, 0)
+        service_layout.addWidget(self.start_service_btn, 0, 1)
+        service_layout.addWidget(self.stop_service_btn, 1, 0)
+        service_layout.addWidget(self.uninstall_service_btn, 1, 1)
+        self.service_note_label = QLabel("Runs sync without the GUI.")
+        self.service_note_label.setObjectName("pathLabel")
+        service_layout.addWidget(self.service_note_label, 2, 0, 1, 2)
+        if sys.platform != "win32":
+            for btn in (
+                self.install_service_btn,
+                self.start_service_btn,
+                self.stop_service_btn,
+                self.uninstall_service_btn,
+            ):
+                btn.setEnabled(False)
+            self.service_note_label.setText("Windows-only service controls.")
+        left_layout.addWidget(service_group)
+
+        index_group = QGroupBox("Library Index")
+        index_layout = QGridLayout(index_group)
+        index_layout.setHorizontalSpacing(8)
+        index_layout.setVerticalSpacing(6)
+        self.rebuild_index_btn = QPushButton("Rebuild Index")
+        self.rebuild_index_btn.setObjectName("secondaryAction")
+        self.import_blur_index_btn = QPushButton("Import Blur CSV")
+        self.import_blur_index_btn.setObjectName("secondaryAction")
+        self.index_note_label = QLabel("SQLite cache for search and AI metadata.")
+        self.index_note_label.setObjectName("pathLabel")
+        index_layout.addWidget(self.rebuild_index_btn, 0, 0)
+        index_layout.addWidget(self.import_blur_index_btn, 0, 1)
+        index_layout.addWidget(self.index_note_label, 1, 0, 1, 2)
+        left_layout.addWidget(index_group)
 
         blur_group = QGroupBox("Blur Tools")
         blur_layout = QGridLayout(blur_group)
@@ -556,6 +867,14 @@ class PhotoManagerWindow(QMainWindow):
         self.run_sync_btn.clicked.connect(self.on_run_sync_now)
         self.start_background_btn.clicked.connect(self.on_start_background)
         self.stop_background_btn.clicked.connect(self.on_stop_background)
+        self.edit_schedule_btn.clicked.connect(self.on_edit_schedule)
+        self.sync_hours_edit.textChanged.connect(lambda _text: self._refresh_schedule_summary())
+        self.install_service_btn.clicked.connect(lambda: self.on_service_command("install"))
+        self.start_service_btn.clicked.connect(lambda: self.on_service_command("start"))
+        self.stop_service_btn.clicked.connect(lambda: self.on_service_command("stop"))
+        self.uninstall_service_btn.clicked.connect(lambda: self.on_service_command("uninstall"))
+        self.rebuild_index_btn.clicked.connect(self.on_rebuild_index)
+        self.import_blur_index_btn.clicked.connect(self.on_import_blur_index)
         self.blur_scan_btn.clicked.connect(self.on_blur_scan)
         self.blur_review_btn.clicked.connect(self.on_blur_review)
         self.blur_autodelete_btn.clicked.connect(self.on_blur_auto_delete)
@@ -676,6 +995,55 @@ class PhotoManagerWindow(QMainWindow):
             """
         )
 
+    def _build_tray(self) -> None:
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray_icon = None
+            return
+
+        icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon)
+        menu = QMenu(self)
+
+        show_action = QAction("Open Photo Manager", self)
+        start_bg_action = QAction("Start Background Sync", self)
+        stop_bg_action = QAction("Stop Background Sync", self)
+        quit_action = QAction("Quit", self)
+
+        show_action.triggered.connect(self._show_from_tray)
+        start_bg_action.triggered.connect(self.on_start_background)
+        stop_bg_action.triggered.connect(self.on_stop_background)
+        quit_action.triggered.connect(self._quit_from_tray)
+
+        menu.addAction(show_action)
+        menu.addSeparator()
+        menu.addAction(start_bg_action)
+        menu.addAction(stop_bg_action)
+        menu.addSeparator()
+        menu.addAction(quit_action)
+
+        self.tray_icon = QSystemTrayIcon(icon, self)
+        self.tray_icon.setToolTip("Photo Manager Pro")
+        self.tray_icon.setContextMenu(menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.show()
+
+    def _on_tray_activated(self, reason) -> None:
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self._show_from_tray()
+
+    def _show_from_tray(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _quit_from_tray(self) -> None:
+        self._allow_real_close = True
+        self.sync_service.stop()
+        if self.tray_icon is not None:
+            self.tray_icon.hide()
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+
     def _default_config(self) -> AppConfig:
         return AppConfig(
             root_dir=str(self.script_dir),
@@ -688,6 +1056,7 @@ class PhotoManagerWindow(QMainWindow):
             delete_after_sync=False,
             watch_delete=False,
             sync_allowed_hours="0-24",
+            sync_weekly_hours="",
             settle_seconds=1.5,
             stable_checks=3,
             poll_interval=0.5,
@@ -698,6 +1067,8 @@ class PhotoManagerWindow(QMainWindow):
             auto_delete_hard=False,
             autostart_background=False,
             autostart_windows=self._is_windows_startup_enabled(),
+            start_minimized=True,
+            minimize_to_tray=True,
         )
 
     def _load_config(self) -> AppConfig:
@@ -728,6 +1099,8 @@ class PhotoManagerWindow(QMainWindow):
         self.watch_delete_check.setChecked(bool(cfg.watch_delete))
         self.autostart_background_check.setChecked(bool(cfg.autostart_background))
         self.sync_hours_edit.setText(str(cfg.sync_allowed_hours or "0-24"))
+        self.sync_weekly_hours = str(getattr(cfg, "sync_weekly_hours", "") or "")
+        self._refresh_schedule_summary()
         self.settle_edit.setText(str(cfg.settle_seconds))
         self.stable_checks_edit.setText(str(cfg.stable_checks))
         self.poll_interval_edit.setText(str(cfg.poll_interval))
@@ -736,6 +1109,8 @@ class PhotoManagerWindow(QMainWindow):
         self.auto_delete_max_edit.setText(str(cfg.auto_delete_max))
         self.auto_delete_hard_check.setChecked(bool(cfg.auto_delete_hard))
         self.autostart_windows_check.setChecked(bool(cfg.autostart_windows))
+        self.start_minimized_check.setChecked(bool(getattr(cfg, "start_minimized", True)))
+        self.minimize_to_tray_check.setChecked(bool(getattr(cfg, "minimize_to_tray", True)))
         if sys.platform != "win32":
             self.autostart_windows_check.setEnabled(False)
             self.autostart_windows_check.setToolTip("Windows-only option.")
@@ -752,6 +1127,7 @@ class PhotoManagerWindow(QMainWindow):
             delete_after_sync=self.delete_after_sync_check.isChecked(),
             watch_delete=self.watch_delete_check.isChecked(),
             sync_allowed_hours=self.sync_hours_edit.text().strip() or "0-24",
+            sync_weekly_hours=self.sync_weekly_hours,
             settle_seconds=self._parse_float(self.settle_edit.text(), "Settle seconds", 0.0),
             stable_checks=self._parse_int(self.stable_checks_edit.text(), "Stable checks", 1),
             poll_interval=self._parse_float(self.poll_interval_edit.text(), "Poll interval", 0.05),
@@ -762,6 +1138,8 @@ class PhotoManagerWindow(QMainWindow):
             auto_delete_hard=self.auto_delete_hard_check.isChecked(),
             autostart_background=self.autostart_background_check.isChecked(),
             autostart_windows=self.autostart_windows_check.isChecked(),
+            start_minimized=self.start_minimized_check.isChecked(),
+            minimize_to_tray=self.minimize_to_tray_check.isChecked(),
         )
 
     def _resolve_runtime_config(self) -> RuntimeConfig:
@@ -769,6 +1147,7 @@ class PhotoManagerWindow(QMainWindow):
         if cfg.date_source not in DATE_SOURCES:
             raise ValueError("Date source must be one of: exif, mtime, ctime")
         self._parse_hour_windows(cfg.sync_allowed_hours)
+        parse_weekly_hours(cfg.sync_weekly_hours)
 
         root_path = Path(cfg.root_dir).expanduser()
         if not root_path.is_absolute():
@@ -801,6 +1180,7 @@ class PhotoManagerWindow(QMainWindow):
             delete_after_sync=cfg.delete_after_sync,
             watch_delete=cfg.watch_delete,
             sync_allowed_hours=cfg.sync_allowed_hours,
+            sync_weekly_hours=cfg.sync_weekly_hours,
             settle_seconds=cfg.settle_seconds,
             stable_checks=cfg.stable_checks,
             poll_interval=cfg.poll_interval,
@@ -854,8 +1234,12 @@ class PhotoManagerWindow(QMainWindow):
         return windows
 
     def is_sync_time_allowed(self, cfg: RuntimeConfig) -> bool:
-        hour = int(time.strftime("%H"))
-        for start, end in self._parse_hour_windows(cfg.sync_allowed_hours):
+        now = datetime.now()
+        weekly = parse_weekly_hours(cfg.sync_weekly_hours)
+        day = DAY_KEYS[now.weekday()]
+        windows = weekly[day] if day in weekly else self._parse_hour_windows(cfg.sync_allowed_hours)
+        for start, end in windows:
+            hour = now.hour
             if start < end and start <= hour < end:
                 return True
             if start > end and (hour >= start or hour < end):
@@ -868,6 +1252,27 @@ class PhotoManagerWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "Invalid settings", str(exc))
             return None
+
+    def _refresh_schedule_summary(self) -> None:
+        try:
+            summary = weekly_schedule_summary(
+                self.sync_weekly_hours,
+                self.sync_hours_edit.text().strip() or "0-24",
+            )
+        except Exception as exc:
+            summary = f"Schedule error: {exc}"
+        self.schedule_summary_label.setText(summary)
+
+    def on_edit_schedule(self) -> None:
+        dialog = WeeklyScheduleDialog(
+            self.sync_weekly_hours,
+            self.sync_hours_edit.text().strip() or "0-24",
+            self,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.sync_weekly_hours = dialog.schedule_text()
+            self._refresh_schedule_summary()
+            self.log("Weekly schedule updated.")
 
     def _drain_log_queue(self) -> None:
         lines: List[str] = []
@@ -929,13 +1334,16 @@ class PhotoManagerWindow(QMainWindow):
         self.worker_thread = threading.Thread(target=run, daemon=True)
         self.worker_thread.start()
 
-    def _startup_command(self) -> str:
+    def _startup_command(self, minimized: bool = True) -> str:
         exe = Path(sys.executable)
         if exe.name.lower() == "python.exe":
             pythonw = exe.with_name("pythonw.exe")
             if pythonw.exists():
                 exe = pythonw
-        return f'"{exe}" "{self.script_dir / "photo_manager_gui.py"}"'
+        cmd = f'"{exe}" "{self.script_dir / "photo_manager_gui.py"}"'
+        if minimized:
+            cmd += " --minimized"
+        return cmd
 
     def _is_windows_startup_enabled(self) -> bool:
         if sys.platform != "win32":
@@ -945,13 +1353,14 @@ class PhotoManagerWindow(QMainWindow):
 
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
                 value, _value_type = winreg.QueryValueEx(key, WINDOWS_RUN_VALUE_NAME)
-            return str(value).strip() == self._startup_command()
+            normalized = str(value).strip()
+            return normalized in {self._startup_command(True), self._startup_command(False)}
         except FileNotFoundError:
             return False
         except Exception:
             return False
 
-    def _set_windows_startup(self, enabled: bool) -> None:
+    def _set_windows_startup(self, enabled: bool, start_minimized: bool) -> None:
         if sys.platform != "win32":
             return
         try:
@@ -964,7 +1373,13 @@ class PhotoManagerWindow(QMainWindow):
                 winreg.KEY_SET_VALUE,
             ) as key:
                 if enabled:
-                    winreg.SetValueEx(key, WINDOWS_RUN_VALUE_NAME, 0, winreg.REG_SZ, self._startup_command())
+                    winreg.SetValueEx(
+                        key,
+                        WINDOWS_RUN_VALUE_NAME,
+                        0,
+                        winreg.REG_SZ,
+                        self._startup_command(start_minimized),
+                    )
                 else:
                     try:
                         winreg.DeleteValue(key, WINDOWS_RUN_VALUE_NAME)
@@ -976,7 +1391,7 @@ class PhotoManagerWindow(QMainWindow):
     def _persist_settings(self, show_message: bool) -> bool:
         try:
             cfg = self._build_config_from_widgets()
-            self._set_windows_startup(cfg.autostart_windows)
+            self._set_windows_startup(cfg.autostart_windows, cfg.start_minimized)
             self.config_path.write_text(json.dumps(cfg.__dict__, ensure_ascii=False, indent=2), encoding="utf-8")
             self.log(f"Settings saved to: {self.config_path}")
             self.log(
@@ -1069,121 +1484,7 @@ class PhotoManagerWindow(QMainWindow):
         return count
 
     def _run_sync_now_worker(self, cfg: RuntimeConfig) -> None:
-        self.log(f"Batch sync root={cfg.root}")
-        self.log(f"Batch sync source={cfg.source}")
-
-        files: List[Path] = []
-        seen = 0
-        t0 = time.time()
-        for path in iter_source_files(cfg.source, recursive=cfg.recursive):
-            seen += 1
-            if is_media_file(path, include_nonmedia=cfg.include_nonmedia):
-                files.append(path)
-            if seen % 400 == 0:
-                self.log(f"scan: checked={seen}, matched={len(files)}")
-
-        self.log(f"scan complete: checked={seen}, matched={len(files)}, elapsed={time.time() - t0:.1f}s")
-        if not files:
-            self.log("No files matched current settings.")
-            return
-
-        actions = []
-        for idx, path in enumerate(files, start=1):
-            try:
-                actions.append(plan_action(cfg.root, path, date_source=cfg.date_source))
-            except Exception as exc:
-                self.log(f"plan skipped: {path} ({exc})")
-            if idx % 400 == 0:
-                self.log(f"planned actions: {idx}/{len(files)}")
-
-        if not actions:
-            self.log("No valid actions were generated.")
-            return
-
-        records: List[dict] = []
-        copy_errors = 0
-
-        for idx, action in enumerate(actions, start=1):
-            for dst in action.dsts:
-                if cfg.dry_run:
-                    records.append(
-                        {
-                            "mode": "batch",
-                            "src": str(action.src),
-                            "dst": str(dst),
-                            "year": action.year,
-                            "flags": ",".join(action.flags),
-                            "status": "dry_run",
-                        }
-                    )
-                    continue
-                try:
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(action.src, dst)
-                    records.append(
-                        {
-                            "mode": "batch",
-                            "src": str(action.src),
-                            "dst": str(dst),
-                            "year": action.year,
-                            "flags": ",".join(action.flags),
-                            "status": "copied",
-                        }
-                    )
-                except Exception as exc:
-                    copy_errors += 1
-                    records.append(
-                        {
-                            "mode": "batch",
-                            "src": str(action.src),
-                            "dst": str(dst),
-                            "year": action.year,
-                            "flags": ",".join(action.flags),
-                            "status": f"copy_error:{exc}",
-                        }
-                    )
-                    self.log(f"copy error: {action.src.name} -> {dst.name}: {exc}")
-
-            if idx % 250 == 0 or idx == len(actions):
-                self.log(f"copy progress: {idx}/{len(actions)}")
-
-        log_path = self.append_sync_records(cfg.root, records)
-        self.log(f"sync log updated: {log_path}")
-
-        if cfg.dry_run:
-            self.log("Dry-run complete. No files were copied or deleted.")
-            return
-
-        verify_failures = 0
-        for idx, action in enumerate(actions, start=1):
-            for dst in action.dsts:
-                if not dst.exists():
-                    verify_failures += 1
-                    continue
-                ok, _method = verify_copy(action.src, dst, full_hash=cfg.full_hash)
-                if not ok:
-                    verify_failures += 1
-                    self.log(f"verify failed: {action.src.name} -> {dst.name}")
-            if idx % 250 == 0 or idx == len(actions):
-                self.log(f"verify progress: {idx}/{len(actions)}")
-
-        if copy_errors > 0 or verify_failures > 0:
-            self.log(f"Sync completed with errors (copy={copy_errors}, verify={verify_failures}).")
-            self.log("Source deletion skipped due to errors.")
-            return
-
-        self.log("All copied files verified successfully.")
-        if cfg.delete_after_sync:
-            deleted = 0
-            failed = 0
-            for action in actions:
-                try:
-                    action.src.unlink(missing_ok=True)
-                    deleted += 1
-                except Exception as exc:
-                    failed += 1
-                    self.log(f"delete failed: {action.src} ({exc})")
-            self.log(f"Source cleanup: deleted={deleted}, failed={failed}")
+        run_batch_sync(cfg, self.log)
 
     def on_start_background(self) -> None:
         cfg = self._get_runtime_or_message()
@@ -1200,6 +1501,59 @@ class PhotoManagerWindow(QMainWindow):
     def on_stop_background(self) -> None:
         self.sync_service.stop()
         self._set_bg_running(False)
+
+    def on_service_command(self, command: str) -> None:
+        if sys.platform != "win32":
+            QMessageBox.information(self, "Windows only", "Service controls are available only on Windows.")
+            return
+        if not self._persist_settings(show_message=False):
+            return
+        cmd = [str(self._console_python_executable()), str(self.script_dir / "photo_manager_service.py"), command]
+        self._start_worker(f"service-{command}", self._run_subprocess_worker, cmd, f"service-{command}")
+
+    def on_rebuild_index(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        if not cfg.root.exists():
+            QMessageBox.critical(self, "Invalid root", f"Root folder does not exist:\n{cfg.root}")
+            return
+        self._start_worker("index-rebuild", self._run_index_rebuild_worker, cfg)
+
+    def on_import_blur_index(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        if not cfg.blur_csv.exists():
+            QMessageBox.critical(self, "Missing CSV", f"Blur CSV does not exist:\n{cfg.blur_csv}")
+            return
+        self._start_worker("index-blur-import", self._run_import_blur_index_worker, cfg)
+
+    def _run_index_rebuild_worker(self, cfg: RuntimeConfig) -> None:
+        self.log(f"index: rebuilding {default_index_path(cfg.root)}")
+        rebuild_index(
+            cfg.root,
+            include_nonmedia=cfg.include_nonmedia,
+            compute_hash=cfg.full_hash,
+            date_source=cfg.date_source,
+            log=self.log,
+        )
+
+    def _run_import_blur_index_worker(self, cfg: RuntimeConfig) -> None:
+        import_blur_csv(
+            cfg.root,
+            cfg.blur_csv,
+            threshold=cfg.blur_threshold,
+            log=self.log,
+        )
+
+    def _console_python_executable(self) -> Path:
+        exe = Path(sys.executable)
+        if exe.name.lower() == "pythonw.exe":
+            python = exe.with_name("python.exe")
+            if python.exists():
+                return python
+        return exe
 
     def _set_bg_running(self, running: bool) -> None:
         if running:
@@ -1226,7 +1580,7 @@ class PhotoManagerWindow(QMainWindow):
         ]
         if cfg.blur_top > 0:
             cmd += ["--top", str(cfg.blur_top)]
-        self._start_worker("blur-scan", self._run_subprocess_worker, cmd, "blur-scan")
+        self._start_worker("blur-scan", self._run_blur_scan_worker, cfg, cmd)
 
     def on_blur_review(self) -> None:
         cfg = self._get_runtime_or_message()
@@ -1274,6 +1628,16 @@ class PhotoManagerWindow(QMainWindow):
             return
         self._start_worker("blur-auto-delete", self._run_blur_auto_delete_worker, cfg)
 
+    def _run_blur_scan_worker(self, cfg: RuntimeConfig, cmd: List[str]) -> None:
+        self._run_subprocess_worker(cmd, "blur-scan")
+        if cfg.blur_csv.exists():
+            import_blur_csv(
+                cfg.root,
+                cfg.blur_csv,
+                threshold=cfg.blur_threshold,
+                log=self.log,
+            )
+
     def _run_subprocess_worker(self, cmd: List[str], tag: str) -> None:
         self.log(f"{tag}: running command: {' '.join(cmd)}")
         proc = subprocess.Popen(
@@ -1292,7 +1656,7 @@ class PhotoManagerWindow(QMainWindow):
         rc = proc.wait()
         if rc != 0:
             raise RuntimeError(f"{tag}: process exited with code {rc}")
-        self.log(f"{tag}: output CSV ready.")
+        self.log(f"{tag}: completed.")
 
     def _run_blur_auto_delete_worker(self, cfg: RuntimeConfig) -> None:
         decision_map = self._load_blur_decisions(cfg.blur_csv)
@@ -1338,19 +1702,35 @@ class PhotoManagerWindow(QMainWindow):
             if not path.exists():
                 missing += 1
                 self._append_blur_decision(cfg.blur_csv, path, "missing", score)
+                try:
+                    update_blur_status(cfg.root, path, status="missing", score=score)
+                except Exception as exc:
+                    self.log(f"blur-auto-delete: index status skipped for {path.name}: {exc}")
                 continue
 
             try:
                 if cfg.auto_delete_hard:
                     path.unlink(missing_ok=True)
                     self._append_blur_decision(cfg.blur_csv, path, "deleted", score)
+                    try:
+                        update_blur_status(cfg.root, path, status="deleted", score=score)
+                    except Exception as exc:
+                        self.log(f"blur-auto-delete: index status skipped for {path.name}: {exc}")
                 else:
                     send2trash(str(path))
                     self._append_blur_decision(cfg.blur_csv, path, "trashed", score)
+                    try:
+                        update_blur_status(cfg.root, path, status="trashed", score=score)
+                    except Exception as exc:
+                        self.log(f"blur-auto-delete: index status skipped for {path.name}: {exc}")
                 deleted += 1
             except Exception as exc:
                 failed += 1
                 self._append_blur_decision(cfg.blur_csv, path, "error", score, extra={"error": str(exc)})
+                try:
+                    update_blur_status(cfg.root, path, status="error", score=score)
+                except Exception as index_exc:
+                    self.log(f"blur-auto-delete: index status skipped for {path.name}: {index_exc}")
                 self.log(f"blur-auto-delete: failed for {path.name}: {exc}")
 
         self.log(
@@ -1437,15 +1817,48 @@ class PhotoManagerWindow(QMainWindow):
             self.blur_csv_edit.setText(path)
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if (
+            not self._allow_real_close
+            and self.tray_icon is not None
+            and self.minimize_to_tray_check.isChecked()
+        ):
+            event.ignore()
+            self.hide()
+            self.tray_icon.showMessage(
+                "Photo Manager Pro",
+                "Still running in the system tray.",
+                QSystemTrayIcon.MessageIcon.Information,
+                2500,
+            )
+            return
         self.sync_service.stop()
+        if self.tray_icon is not None:
+            self.tray_icon.hide()
         super().closeEvent(event)
+        app = QApplication.instance()
+        if app is not None:
+            QTimer.singleShot(0, app.quit)
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("--minimized", action="store_true", help="Start hidden in the system tray.")
+    args, qt_args = parser.parse_known_args()
+
+    sys.argv = [sys.argv[0], *qt_args]
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     win = PhotoManagerWindow()
-    win.show()
+    if win.tray_icon is not None:
+        app.setQuitOnLastWindowClosed(False)
+    if args.minimized:
+        if win.tray_icon is None:
+            win.showMinimized()
+        else:
+            win.hide()
+            win.log("Started minimized to tray.")
+    else:
+        win.show()
     sys.exit(app.exec())
 
 

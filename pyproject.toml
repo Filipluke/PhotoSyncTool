@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools >= 77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "photosync-tool"
+version = "0.1.0"
+description = "Local desktop tool for organizing, syncing, indexing, and reviewing photos."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Filipluke" }
+]
+keywords = ["photos", "sync", "desktop", "pyside6", "blur-detection", "sqlite"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "PySide6",
+    "Pillow",
+    "opencv-python",
+    "numpy",
+    "Send2Trash",
+    "watchdog",
+    "pywin32; platform_system == 'Windows'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build",
+    "twine",
+]
+
+[project.urls]
+Homepage = "https://github.com/Filipluke/PhotoSyncTool"
+Repository = "https://github.com/Filipluke/PhotoSyncTool"
+Issues = "https://github.com/Filipluke/PhotoSyncTool/issues"
+
+[project.scripts]
+photo-manager-pro = "photo_manager_gui:main"
+photo-manager-service = "photo_manager_service:main"
+photo-manager-index = "photo_manager_index:main"
+photo-blur-tool = "blur_tool:main"
+photo-sorter = "sort_photos_script:main"
+photo-dedupe = "dedupe_photos:main"
+photo-dedupe-snap = "dedupe_snap_only:main"
+photo-remove-name-dupes = "remove_name_duplicates:main"
+
+[tool.setuptools]
+py-modules = [
+    "blur_tool",
+    "dedupe_photos",
+    "dedupe_snap_only",
+    "photo_manager_core",
+    "photo_manager_gui",
+    "photo_manager_index",
+    "photo_manager_qt",
+    "photo_manager_service",
+    "remove_name_duplicates",
+    "sort_photos_script",
+]

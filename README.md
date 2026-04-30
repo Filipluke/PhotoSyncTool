@@ -11,6 +11,7 @@ A local tool for organizing photos and videos. The app provides a PySide6 GUI, o
 - Background sync mode powered by `watchdog`.
 - CSV synchronization log.
 - Blur scanning with OpenCV.
+- Local SQLite metadata index for files, sync events, blur scores, and future AI data.
 - Automatic background sync after the app starts.
 - Option to open the app on Windows startup.
 
@@ -22,6 +23,26 @@ py photo_manager_gui.py
 ```
 
 `photo_manager_gui.py` is a lightweight launcher. The main application lives in `photo_manager_qt.py`.
+
+After the first PyPI release, the app can also be installed as:
+
+```powershell
+python -m pip install photosync-tool
+photo-manager-pro
+```
+
+## Library Index
+
+The app maintains a local SQLite index named `photo_manager_index.sqlite3` in the selected photo root folder. It is intentionally local and disposable: it can be rebuilt from the library, sync logs, and blur CSVs.
+
+The index currently stores:
+
+- Media file paths, size, timestamps, year, dimensions, status, and optional quick hashes.
+- Sync events from batch sync, background sync, and the headless service.
+- Blur scores imported from `blur_tool.py`.
+- Placeholder storage for future AI captions, tags, and embeddings.
+
+In the GUI, use `Library Index -> Rebuild Index` to scan the current root folder, or `Import Blur CSV` to load existing blur scan results. Batch sync, background sync, the Windows service, blur scan, and blur auto-delete now update the index automatically.
 
 ## Startup And Background Work
 
@@ -66,8 +87,9 @@ AI could add practical features such as:
 I would not start with full Torch as a hard application dependency. A better path:
 
 1. Start with an API backend or ONNX Runtime as an optional backend.
-2. For local models, use `onnxruntime` with CLIP/SigLIP embeddings for similarity and search.
-3. Add `torch` later as an optional `requirements-ai.txt` package only when training or GPU-heavy models become necessary.
+2. Use the SQLite index as the cache for tags, captions, embeddings, and review decisions.
+3. For local models, use `onnxruntime` with CLIP/SigLIP embeddings for similarity and search.
+4. Add `torch` later as an optional `requirements-ai.txt` package only when training or GPU-heavy models become necessary.
 
 Torch is powerful, but heavy. For a desktop app that should remain stable and easy to run, ONNX Runtime or an external API will usually be less painful.
 
@@ -76,7 +98,7 @@ Torch is powerful, but heavy. For a desktop app that should remain stable and ea
 - Real service/headless mode.
 - Work schedule and pause controls.
 - Background task queue with retry.
-- SQLite metadata index.
+- SQLite-backed search and gallery views.
 - Duplicate view with thumbnails.
 - Thumbnails and a fast gallery in the GUI.
 - Search by date, folder, tags, and AI captions.

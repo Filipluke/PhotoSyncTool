@@ -1,2 +1,17 @@
 __pycache__/
 *.py[cod]
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+*.egg-info/
+photo_manager_config.json
+photo_manager_index.sqlite3*
+photo_manager_sync_log.csv
+photo_manager_service.log
+blur_candidates*.csv
+*.decisions.csv

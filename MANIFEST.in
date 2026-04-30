@@ -1,0 +1,13 @@
+include README.md
+include CHANGELOG.md
+include RELEASE.md
+
+exclude photo_manager_config.json
+exclude photo_manager_index.sqlite3*
+exclude photo_manager_sync_log.csv
+exclude photo_manager_service.log
+exclude blur_candidates*.csv
+exclude *.decisions.csv
+
+global-exclude __pycache__/*
+global-exclude *.py[cod]
