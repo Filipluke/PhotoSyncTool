@@ -8,6 +8,7 @@ import csv
 import json
 import sqlite3
 import time
+import warnings
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ INTERNAL_FILE_NAMES = {
     "photo_manager_sync_log.csv",
     "photo_manager_service.log",
 }
+INTERNAL_DIR_NAMES = {".photo_manager_cache", "__pycache__", ".git", ".github"}
 
 Logger = Callable[[str], None]
 
@@ -168,7 +170,11 @@ def image_size(path: Path) -> tuple[Optional[int], Optional[int]]:
         return None, None
 
     try:
-        with Image.open(path) as img:
+        with warnings.catch_warnings():
+            if hasattr(Image, "DecompressionBombWarning"):
+                warnings.simplefilter("ignore", Image.DecompressionBombWarning)
+            img = Image.open(path)
+        with img:
             return int(img.width), int(img.height)
     except Exception:
         return None, None
@@ -471,6 +477,8 @@ def update_file_status(root: Path, path: Path, *, status: str) -> None:
 def iter_library_files(root: Path, include_nonmedia: bool = False) -> Iterable[Path]:
     for path in root.rglob("*"):
         name = path.name.lower()
+        if any(part.lower() in INTERNAL_DIR_NAMES for part in path.parts):
+            continue
         if name in INTERNAL_FILE_NAMES:
             continue
         if name.startswith("blur_candidates") and name.endswith(".csv"):

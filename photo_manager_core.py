@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import shutil
+import sys
 import threading
 import time
 from contextlib import nullcontext
@@ -26,6 +28,7 @@ from photo_manager_index import index_sync_records, update_file_status
 
 CONFIG_FILE_NAME = "photo_manager_config.json"
 SYNC_LOG_NAME = "photo_manager_sync_log.csv"
+APP_CONFIG_DIR_NAME = "PhotoManagerPro"
 DATE_SOURCES = ("exif", "mtime", "ctime")
 PENDING_STATUS = "pending"
 
@@ -42,6 +45,26 @@ DAY_LABELS = {
 SYNC_LOG_COLUMNS = ["ts", "mode", "src", "dst", "year", "flags", "status"]
 
 Logger = Callable[[str], None]
+
+
+def user_config_dir() -> Path:
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
+        if base:
+            return Path(base) / APP_CONFIG_DIR_NAME
+        return Path.home() / "AppData" / "Roaming" / APP_CONFIG_DIR_NAME
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / APP_CONFIG_DIR_NAME
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / APP_CONFIG_DIR_NAME
+
+
+def default_config_path() -> Path:
+    return user_config_dir() / CONFIG_FILE_NAME
+
+
+def default_photo_root() -> Path:
+    pictures = Path.home() / "Pictures"
+    return pictures if pictures.exists() else Path.home()
 
 
 @dataclass
@@ -96,7 +119,7 @@ class RuntimeConfig:
 
 def default_app_config(script_dir: Path, autostart_windows: bool = False) -> AppConfig:
     return AppConfig(
-        root_dir=str(script_dir),
+        root_dir=str(default_photo_root()),
         source_dir="Sorting folder",
         date_source="exif",
         recursive=True,

@@ -9,12 +9,36 @@ import re
 import shutil
 import sys
 import time
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Tuple, Iterable
 
 # ---------------- EXIF (optional via Pillow) ----------------
+def try_get_year_from_filename(path: Path) -> Optional[int]:
+    """
+    Reads years from common phone/camera filenames, e.g.:
+      20210924_132556.jpg
+      IMG_20210924_132556.jpg
+      VID-20210924-WA0001.mp4
+      Zrzut ekranu_20221204_225309.png
+    """
+    name = path.name
+    patterns = (
+        r"(?<!\d)((?:19|20)\d{2})(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])",
+        r"(?<!\d)((?:19|20)\d{2})[-_. ](?:0[1-9]|1[0-2])[-_. ](?:0[1-9]|[12]\d|3[01])",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, name)
+        if not match:
+            continue
+        year = int(match.group(1))
+        if 1900 <= year <= 2100:
+            return year
+    return None
+
+
 def try_get_year_from_exif(path: Path) -> Optional[int]:
     """
     Attempts to read DateTimeOriginal from EXIF using Pillow (if available).
@@ -26,7 +50,11 @@ def try_get_year_from_exif(path: Path) -> Optional[int]:
         return None
 
     try:
-        with Image.open(path) as img:
+        with warnings.catch_warnings():
+            if hasattr(Image, "DecompressionBombWarning"):
+                warnings.simplefilter("ignore", Image.DecompressionBombWarning)
+            img = Image.open(path)
+        with img:
             exif = getattr(img, "_getexif", None)
             if not exif:
                 return None
@@ -59,7 +87,7 @@ def try_get_year_from_exif(path: Path) -> Optional[int]:
 def detect_year(path: Path, date_source: str = "exif") -> int:
     """
     date_source:
-      - exif: try EXIF DateTimeOriginal, fallback to mtime
+      - exif: try EXIF DateTimeOriginal, fallback to filename date, then mtime
       - mtime: use modified time (Windows "Zmodyfikowany")
       - ctime: use ctime (Windows often "Utworzony", on Unix metadata change time)
     """
@@ -67,6 +95,9 @@ def detect_year(path: Path, date_source: str = "exif") -> int:
 
     if date_source == "exif":
         y = try_get_year_from_exif(path)
+        if y is not None:
+            return y
+        y = try_get_year_from_filename(path)
         if y is not None:
             return y
         return datetime.fromtimestamp(st.st_mtime).year
@@ -487,7 +518,7 @@ def main():
         "--date-source",
         choices=["exif", "mtime", "ctime"],
         default="exif",
-        help="Which timestamp to use for year: exif (photos) fallback->mtime, mtime (modified), ctime (created/metadata)."
+        help="Which timestamp to use for year: exif (EXIF, then filename date, then mtime), mtime, or ctime."
     )
 
     parser.add_argument("--full-hash", action="store_true", help="Use full SHA256 for verification (slower).")
@@ -544,7 +575,7 @@ def main():
     print(f"Source: {source} (recursive={recursive})")
     print(f"Files to process: {len(actions)}")
     print(f"Mode: {'DRY-RUN' if args.dry_run else 'COPY'} | Verification: {'SHA256(full)' if args.full_hash else 'Quick fingerprint'}")
-    print(f"Date source: {args.date_source} (exif falls back to mtime)")
+    print(f"Date source: {args.date_source} (exif falls back to filename date, then mtime)")
     print()
 
     ok, log_path = execute_actions(actions, root, full_hash=args.full_hash, dry_run=args.dry_run)

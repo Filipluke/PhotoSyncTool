@@ -1,6 +1,8 @@
 include README.md
 include CHANGELOG.md
+include LICENSE
 include RELEASE.md
+recursive-include photosync_tool_assets *.png *.ico
 
 exclude photo_manager_config.json
 exclude photo_manager_index.sqlite3*

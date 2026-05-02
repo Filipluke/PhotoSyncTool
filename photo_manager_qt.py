@@ -14,12 +14,16 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from importlib import resources
 from pathlib import Path
 from typing import Dict, List, Optional
+import urllib.request
 
 from photo_manager_core import (
     DAY_KEYS,
     DAY_LABELS,
+    default_config_path,
+    default_photo_root,
     parse_weekly_hours,
     run_batch_sync,
     serialize_weekly_hours,
@@ -32,6 +36,24 @@ from photo_manager_index import (
     rebuild_index,
     update_blur_status,
     update_file_status,
+)
+from photo_manager_features import (
+    DuplicateCandidate,
+    GalleryItem,
+    build_thumbnail,
+    dashboard_stats,
+    enqueue_delete,
+    export_delete_queue,
+    gallery_filter_options,
+    human_bytes,
+    list_delete_queue,
+    list_gallery_items,
+    parse_tags,
+    run_light_ai,
+    scan_duplicates,
+    search_ai_metadata,
+    trash_delete_items,
+    update_delete_items,
 )
 from sort_photos_script import (
     ensure_file_stable,
@@ -47,8 +69,9 @@ except Exception:
     send2trash = None
 
 try:
-    from PySide6.QtCore import Qt, QTimer
-    from PySide6.QtGui import QAction, QColor, QCloseEvent
+    from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+    from PySide6.QtGui import QAction, QColor, QCloseEvent, QDesktopServices, QIcon, QPixmap
+    from PySide6.QtNetwork import QLocalServer, QLocalSocket
     from PySide6.QtWidgets import (
         QApplication,
         QAbstractItemView,
@@ -64,6 +87,7 @@ try:
         QHBoxLayout,
         QLabel,
         QLineEdit,
+        QListWidgetItem,
         QMainWindow,
         QMenu,
         QMessageBox,
@@ -71,6 +95,7 @@ try:
         QScrollArea,
         QStyle,
         QSystemTrayIcon,
+        QTabWidget,
         QTableWidget,
         QTableWidgetItem,
         QSplitter,
@@ -85,13 +110,72 @@ except Exception as exc:
     ) from exc
 
 
-CONFIG_FILE_NAME = "photo_manager_config.json"
 SYNC_LOG_NAME = "photo_manager_sync_log.csv"
 BLUR_SCRIPT_NAME = "blur_tool.py"
 WINDOWS_RUN_VALUE_NAME = "PhotoManagerPro"
+APP_ICON_PACKAGE = "photosync_tool_assets"
+APP_ICON_NAME = "photo_manager_icon.png"
+SINGLE_INSTANCE_SERVER_NAME = "PhotoManagerPro.Filipluke.SingleInstance.v1"
 
 DATE_SOURCES = ("exif", "mtime", "ctime")
 PENDING_STATUS = "pending"
+
+
+def load_app_icon() -> QIcon:
+    icon = QIcon()
+    try:
+        data = resources.files(APP_ICON_PACKAGE).joinpath(APP_ICON_NAME).read_bytes()
+    except Exception:
+        data = b""
+
+    if data:
+        pixmap = QPixmap()
+        if pixmap.loadFromData(data):
+            icon.addPixmap(pixmap)
+    return icon
+
+
+class SingleInstanceGuard:
+    def __init__(self, server_name: str) -> None:
+        self.server_name = server_name
+        self.server: Optional[QLocalServer] = None
+        self.on_activate = None
+
+    def notify_existing_instance(self, timeout_ms: int = 500) -> bool:
+        socket = QLocalSocket()
+        socket.connectToServer(self.server_name)
+        if not socket.waitForConnected(timeout_ms):
+            socket.abort()
+            return False
+
+        socket.write(b"show\n")
+        socket.flush()
+        socket.waitForBytesWritten(timeout_ms)
+        socket.disconnectFromServer()
+        return True
+
+    def listen(self, on_activate) -> None:
+        self.on_activate = on_activate
+        QLocalServer.removeServer(self.server_name)
+        self.server = QLocalServer()
+        self.server.newConnection.connect(self._handle_new_connection)
+        if not self.server.listen(self.server_name):
+            raise RuntimeError(f"Could not create single-instance server: {self.server.errorString()}")
+
+    def close(self) -> None:
+        if self.server is not None:
+            self.server.close()
+            self.server = None
+        QLocalServer.removeServer(self.server_name)
+
+    def _handle_new_connection(self) -> None:
+        if self.server is None:
+            return
+        while self.server.hasPendingConnections():
+            socket = self.server.nextPendingConnection()
+            socket.close()
+        if self.on_activate is not None:
+            self.on_activate()
 
 
 @dataclass
@@ -576,23 +660,30 @@ class SyncWatchService:
 
 
 class PhotoManagerWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, app_icon: Optional[QIcon] = None) -> None:
         super().__init__()
         self.script_dir = Path(__file__).resolve().parent
-        self.config_path = self.script_dir / CONFIG_FILE_NAME
+        self.legacy_config_path = self.script_dir / "photo_manager_config.json"
+        self.config_path = default_config_path()
         self._allow_real_close = False
         self.tray_icon: Optional[QSystemTrayIcon] = None
         self.sync_weekly_hours = ""
+        self.app_icon = app_icon if app_icon is not None else load_app_icon()
 
         self.log_queue: "queue.Queue[str]" = queue.Queue()
+        self.ui_queue: "queue.Queue[object]" = queue.Queue()
         self.log_lock = threading.Lock()
         self.worker_thread: Optional[threading.Thread] = None
         self.worker_name = ""
         self.sync_service = SyncWatchService(self)
+        self.gallery_payload: List[tuple[GalleryItem, Optional[Path]]] = []
+        self.duplicate_actions: List[DuplicateCandidate] = []
 
         self.sync_log_columns = ["ts", "mode", "src", "dst", "year", "flags", "status"]
 
         self.setWindowTitle("Photo Manager Pro")
+        if not self.app_icon.isNull():
+            self.setWindowIcon(self.app_icon)
         self.resize(1240, 900)
         self._build_ui()
         self._apply_theme()
@@ -603,6 +694,7 @@ class PhotoManagerWindow(QMainWindow):
         self.log("Configuration loaded.")
         self._set_bg_running(False)
         self.on_compare_preview()
+        QTimer.singleShot(250, self.on_dashboard_refresh)
 
         self.log_timer = QTimer(self)
         self.log_timer.timeout.connect(self._drain_log_queue)
@@ -796,11 +888,14 @@ class PhotoManagerWindow(QMainWindow):
         self.blur_scan_btn.setObjectName("secondaryAction")
         self.blur_review_btn = QPushButton("Manual Review")
         self.blur_review_btn.setObjectName("secondaryAction")
+        self.blur_queue_btn = QPushButton("Queue Blur Candidates")
+        self.blur_queue_btn.setObjectName("secondaryAction")
         self.blur_autodelete_btn = QPushButton("Auto Delete")
         self.blur_autodelete_btn.setObjectName("dangerAction")
         blur_layout.addWidget(self.blur_scan_btn, 4, 0, 1, 2)
         blur_layout.addWidget(self.blur_review_btn, 5, 0, 1, 2)
-        blur_layout.addWidget(self.blur_autodelete_btn, 6, 0, 1, 2)
+        blur_layout.addWidget(self.blur_queue_btn, 6, 0, 1, 2)
+        blur_layout.addWidget(self.blur_autodelete_btn, 7, 0, 1, 2)
         left_layout.addWidget(blur_group)
         left_layout.addStretch(1)
 
@@ -847,7 +942,15 @@ class PhotoManagerWindow(QMainWindow):
         preview_split.setSizes([530, 530])
 
         compare_layout.addWidget(preview_split)
-        right_layout.addWidget(compare_group, stretch=1)
+
+        self.workspace_tabs = QTabWidget()
+        self.workspace_tabs.addTab(compare_group, "Compare")
+        self.workspace_tabs.addTab(self._build_dashboard_tab(), "Dashboard")
+        self.workspace_tabs.addTab(self._build_gallery_tab(), "Gallery")
+        self.workspace_tabs.addTab(self._build_duplicates_tab(), "Duplicates")
+        self.workspace_tabs.addTab(self._build_delete_queue_tab(), "Delete Queue")
+        self.workspace_tabs.addTab(self._build_ai_tab(), "Light AI")
+        right_layout.addWidget(self.workspace_tabs, stretch=1)
 
         workspace_splitter.addWidget(left_scroll)
         workspace_splitter.addWidget(right_panel)
@@ -877,7 +980,254 @@ class PhotoManagerWindow(QMainWindow):
         self.import_blur_index_btn.clicked.connect(self.on_import_blur_index)
         self.blur_scan_btn.clicked.connect(self.on_blur_scan)
         self.blur_review_btn.clicked.connect(self.on_blur_review)
+        self.blur_queue_btn.clicked.connect(self.on_queue_blur_candidates)
         self.blur_autodelete_btn.clicked.connect(self.on_blur_auto_delete)
+        self.dashboard_refresh_btn.clicked.connect(self.on_dashboard_refresh)
+        self.about_btn.clicked.connect(self.on_about)
+        self.check_updates_btn.clicked.connect(self.on_check_updates)
+        self.start_menu_shortcut_btn.clicked.connect(self.on_create_start_menu_shortcut)
+        self.gallery_refresh_btn.clicked.connect(self.on_gallery_refresh)
+        self.gallery_search_edit.returnPressed.connect(self.on_gallery_refresh)
+        self.gallery_open_btn.clicked.connect(self.on_gallery_open_selected)
+        self.gallery_queue_btn.clicked.connect(self.on_gallery_queue_selected)
+        self.gallery_list.currentItemChanged.connect(self.on_gallery_selected)
+        self.duplicate_scan_btn.clicked.connect(self.on_duplicate_scan)
+        self.duplicate_queue_selected_btn.clicked.connect(self.on_duplicate_queue_selected)
+        self.duplicate_queue_all_btn.clicked.connect(self.on_duplicate_queue_all)
+        self.duplicate_open_keep_btn.clicked.connect(lambda: self.on_duplicate_open("keep"))
+        self.duplicate_open_remove_btn.clicked.connect(lambda: self.on_duplicate_open("remove"))
+        self.duplicates_table.itemSelectionChanged.connect(self.on_duplicate_selected)
+        self.delete_refresh_btn.clicked.connect(self.on_delete_queue_refresh)
+        self.delete_status_combo.currentTextChanged.connect(lambda _text: self.on_delete_queue_refresh())
+        self.delete_cancel_btn.clicked.connect(self.on_delete_queue_cancel_selected)
+        self.delete_trash_selected_btn.clicked.connect(self.on_delete_queue_trash_selected)
+        self.delete_trash_all_btn.clicked.connect(self.on_delete_queue_trash_all)
+        self.delete_export_btn.clicked.connect(self.on_delete_queue_export)
+        self.delete_recycle_btn.clicked.connect(self.on_open_recycle_bin)
+        self.ai_run_btn.clicked.connect(self.on_light_ai_run)
+        self.ai_search_btn.clicked.connect(self.on_ai_search)
+        self.ai_search_edit.returnPressed.connect(self.on_ai_search)
+        self.ai_open_btn.clicked.connect(self.on_ai_open_selected)
+
+    def _new_table(self, headers: List[str]) -> QTableWidget:
+        table = QTableWidget(0, len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.verticalHeader().setVisible(False)
+        return table
+
+    def _build_dashboard_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        toolbar = QHBoxLayout()
+        self.dashboard_refresh_btn = QPushButton("Refresh")
+        self.dashboard_refresh_btn.setObjectName("secondaryAction")
+        self.about_btn = QPushButton("About")
+        self.check_updates_btn = QPushButton("Check Updates")
+        self.start_menu_shortcut_btn = QPushButton("Start Menu Shortcut")
+        for btn in (self.about_btn, self.check_updates_btn, self.start_menu_shortcut_btn):
+            btn.setObjectName("toolbarButton")
+        toolbar.addWidget(self.dashboard_refresh_btn)
+        toolbar.addStretch(1)
+        toolbar.addWidget(self.about_btn)
+        toolbar.addWidget(self.check_updates_btn)
+        toolbar.addWidget(self.start_menu_shortcut_btn)
+        layout.addLayout(toolbar)
+
+        self.dashboard_summary_label = QLabel("Index dashboard not loaded yet.")
+        self.dashboard_summary_label.setObjectName("pathLabel")
+        layout.addWidget(self.dashboard_summary_label)
+
+        split = QSplitter()
+        split.setChildrenCollapsible(False)
+        self.dashboard_year_table = self._new_table(["Year", "Files"])
+        self.dashboard_folder_table = self._new_table(["Folder", "Files", "Size"])
+        self.dashboard_events_table = self._new_table(["Time", "Mode", "Status", "Source", "Target"])
+        split.addWidget(self.dashboard_year_table)
+        split.addWidget(self.dashboard_folder_table)
+        split.addWidget(self.dashboard_events_table)
+        split.setSizes([180, 330, 470])
+        layout.addWidget(split, stretch=1)
+        return tab
+
+    def _build_gallery_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        filters = QHBoxLayout()
+        self.gallery_year_combo = QComboBox()
+        self.gallery_status_combo = QComboBox()
+        self.gallery_status_combo.addItems(["present", "all"])
+        self.gallery_blur_max_edit = QLineEdit()
+        self.gallery_blur_max_edit.setPlaceholderText("Max blur score")
+        self.gallery_search_edit = QLineEdit()
+        self.gallery_search_edit.setPlaceholderText("Search path, caption, tag, OCR")
+        self.gallery_limit_edit = QLineEdit("300")
+        self.gallery_limit_edit.setFixedWidth(70)
+        self.gallery_refresh_btn = QPushButton("Load")
+        self.gallery_refresh_btn.setObjectName("secondaryAction")
+        self.gallery_open_btn = QPushButton("Open")
+        self.gallery_queue_btn = QPushButton("Queue Delete")
+        self.gallery_queue_btn.setObjectName("dangerAction")
+        filters.addWidget(QLabel("Year"))
+        filters.addWidget(self.gallery_year_combo)
+        filters.addWidget(QLabel("Status"))
+        filters.addWidget(self.gallery_status_combo)
+        filters.addWidget(QLabel("Blur"))
+        filters.addWidget(self.gallery_blur_max_edit)
+        filters.addWidget(self.gallery_search_edit, stretch=1)
+        filters.addWidget(QLabel("Limit"))
+        filters.addWidget(self.gallery_limit_edit)
+        filters.addWidget(self.gallery_refresh_btn)
+        filters.addWidget(self.gallery_open_btn)
+        filters.addWidget(self.gallery_queue_btn)
+        layout.addLayout(filters)
+
+        split = QSplitter()
+        split.setChildrenCollapsible(False)
+        self.gallery_list = QListWidget()
+        self.gallery_list.setViewMode(QListWidget.ViewMode.IconMode)
+        self.gallery_list.setIconSize(QSize(160, 160))
+        self.gallery_list.setGridSize(QSize(220, 220))
+        self.gallery_list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.gallery_list.setMovement(QListWidget.Movement.Static)
+        self.gallery_list.setSpacing(8)
+        self.gallery_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+
+        preview_panel = QWidget()
+        preview_layout = QVBoxLayout(preview_panel)
+        preview_layout.setContentsMargins(8, 0, 0, 0)
+        self.gallery_preview_label = QLabel()
+        self.gallery_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.gallery_preview_label.setMinimumSize(320, 320)
+        self.gallery_preview_label.setStyleSheet("background: #11141a; border: 1px solid #3a404b;")
+        self.gallery_details = QPlainTextEdit()
+        self.gallery_details.setReadOnly(True)
+        self.gallery_details.setMinimumHeight(140)
+        preview_layout.addWidget(self.gallery_preview_label, stretch=1)
+        preview_layout.addWidget(self.gallery_details)
+
+        split.addWidget(self.gallery_list)
+        split.addWidget(preview_panel)
+        split.setSizes([650, 330])
+        layout.addWidget(split, stretch=1)
+        return tab
+
+    def _build_duplicates_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        toolbar = QHBoxLayout()
+        self.duplicate_scan_btn = QPushButton("Scan Duplicates")
+        self.duplicate_scan_btn.setObjectName("secondaryAction")
+        self.duplicate_queue_selected_btn = QPushButton("Queue Selected")
+        self.duplicate_queue_all_btn = QPushButton("Queue All")
+        self.duplicate_queue_all_btn.setObjectName("dangerAction")
+        self.duplicate_open_keep_btn = QPushButton("Open Keep")
+        self.duplicate_open_remove_btn = QPushButton("Open Remove")
+        toolbar.addWidget(self.duplicate_scan_btn)
+        toolbar.addStretch(1)
+        toolbar.addWidget(self.duplicate_open_keep_btn)
+        toolbar.addWidget(self.duplicate_open_remove_btn)
+        toolbar.addWidget(self.duplicate_queue_selected_btn)
+        toolbar.addWidget(self.duplicate_queue_all_btn)
+        layout.addLayout(toolbar)
+
+        split = QSplitter()
+        split.setChildrenCollapsible(False)
+        self.duplicates_table = self._new_table(["Remove", "Keep", "Size", "Reason"])
+        preview = QWidget()
+        preview_layout = QGridLayout(preview)
+        self.duplicate_keep_preview = QLabel("Keep")
+        self.duplicate_remove_preview = QLabel("Remove")
+        for label in (self.duplicate_keep_preview, self.duplicate_remove_preview):
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setMinimumSize(220, 220)
+            label.setStyleSheet("background: #11141a; border: 1px solid #3a404b;")
+        self.duplicate_details = QPlainTextEdit()
+        self.duplicate_details.setReadOnly(True)
+        preview_layout.addWidget(QLabel("Keep"), 0, 0)
+        preview_layout.addWidget(QLabel("Duplicate"), 0, 1)
+        preview_layout.addWidget(self.duplicate_keep_preview, 1, 0)
+        preview_layout.addWidget(self.duplicate_remove_preview, 1, 1)
+        preview_layout.addWidget(self.duplicate_details, 2, 0, 1, 2)
+        split.addWidget(self.duplicates_table)
+        split.addWidget(preview)
+        split.setSizes([620, 360])
+        layout.addWidget(split, stretch=1)
+        return tab
+
+    def _build_delete_queue_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        toolbar = QHBoxLayout()
+        self.delete_status_combo = QComboBox()
+        self.delete_status_combo.addItems(["queued", "all", "trashed", "cancelled", "missing", "error"])
+        self.delete_refresh_btn = QPushButton("Refresh")
+        self.delete_trash_selected_btn = QPushButton("Trash Selected")
+        self.delete_trash_all_btn = QPushButton("Trash All Queued")
+        self.delete_trash_all_btn.setObjectName("dangerAction")
+        self.delete_cancel_btn = QPushButton("Cancel Selected")
+        self.delete_export_btn = QPushButton("Export CSV")
+        self.delete_recycle_btn = QPushButton("Open Recycle Bin")
+        toolbar.addWidget(QLabel("Status"))
+        toolbar.addWidget(self.delete_status_combo)
+        toolbar.addWidget(self.delete_refresh_btn)
+        toolbar.addStretch(1)
+        toolbar.addWidget(self.delete_cancel_btn)
+        toolbar.addWidget(self.delete_trash_selected_btn)
+        toolbar.addWidget(self.delete_trash_all_btn)
+        toolbar.addWidget(self.delete_export_btn)
+        toolbar.addWidget(self.delete_recycle_btn)
+        layout.addLayout(toolbar)
+
+        self.delete_table = self._new_table(["ID", "Path", "Reason", "Source", "Status", "Created"])
+        layout.addWidget(self.delete_table, stretch=1)
+        return tab
+
+    def _build_ai_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        toolbar = QHBoxLayout()
+        self.ai_limit_edit = QLineEdit("100")
+        self.ai_limit_edit.setFixedWidth(70)
+        self.ai_only_missing_check = QCheckBox("Only missing metadata")
+        self.ai_only_missing_check.setChecked(True)
+        self.ai_run_btn = QPushButton("Run Light AI")
+        self.ai_run_btn.setObjectName("secondaryAction")
+        self.ai_search_edit = QLineEdit()
+        self.ai_search_edit.setPlaceholderText("Search captions, tags, OCR")
+        self.ai_search_btn = QPushButton("Search")
+        self.ai_open_btn = QPushButton("Open Selected")
+        toolbar.addWidget(QLabel("Limit"))
+        toolbar.addWidget(self.ai_limit_edit)
+        toolbar.addWidget(self.ai_only_missing_check)
+        toolbar.addWidget(self.ai_run_btn)
+        toolbar.addSpacing(12)
+        toolbar.addWidget(self.ai_search_edit, stretch=1)
+        toolbar.addWidget(self.ai_search_btn)
+        toolbar.addWidget(self.ai_open_btn)
+        layout.addLayout(toolbar)
+
+        self.ai_results_table = self._new_table(["Path", "Year", "Tags", "Caption", "Backend"])
+        layout.addWidget(self.ai_results_table, stretch=1)
+        return tab
 
     def _path_row(self, browse_callback):
         row = QWidget()
@@ -940,7 +1290,7 @@ class PhotoManagerWindow(QMainWindow):
                 padding: 0 6px;
                 color: #9ab6ff;
             }
-            QLineEdit, QComboBox, QListWidget, QPlainTextEdit {
+            QLineEdit, QComboBox, QListWidget, QTableWidget, QPlainTextEdit {
                 border: 1px solid #414854;
                 border-radius: 5px;
                 padding: 5px;
@@ -948,6 +1298,19 @@ class PhotoManagerWindow(QMainWindow):
                 color: #d8deea;
                 selection-background-color: #1c4ca6;
             }
+            QTabWidget::pane {
+                border: 1px solid #3a3f49;
+                background: #191c22;
+            }
+            QTabBar::tab {
+                background: #252a33;
+                color: #cdd4e2;
+                padding: 7px 12px;
+                border: 1px solid #3a3f49;
+                border-bottom: none;
+            }
+            QTabBar::tab:selected { background: #313846; color: #f1f5ff; }
+            QTableWidget::item { padding: 4px; }
             QListWidget { font-family: Consolas, 'Courier New', monospace; }
             QLabel#pathLabel {
                 color: #9ea8b8;
@@ -1000,7 +1363,9 @@ class PhotoManagerWindow(QMainWindow):
             self.tray_icon = None
             return
 
-        icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon)
+        icon = self.app_icon
+        if icon.isNull():
+            icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon)
         menu = QMenu(self)
 
         show_action = QAction("Open Photo Manager", self)
@@ -1046,7 +1411,7 @@ class PhotoManagerWindow(QMainWindow):
 
     def _default_config(self) -> AppConfig:
         return AppConfig(
-            root_dir=str(self.script_dir),
+            root_dir=str(default_photo_root()),
             source_dir="Sorting folder",
             date_source="exif",
             recursive=True,
@@ -1073,10 +1438,14 @@ class PhotoManagerWindow(QMainWindow):
 
     def _load_config(self) -> AppConfig:
         cfg = self._default_config()
-        if not self.config_path.exists():
+        config_path = self.config_path
+        if not config_path.exists() and self.legacy_config_path.exists():
+            config_path = self.legacy_config_path
+            self.log(f"Using legacy config path: {config_path}")
+        if not config_path.exists():
             return cfg
         try:
-            data = json.loads(self.config_path.read_text(encoding="utf-8"))
+            data = json.loads(config_path.read_text(encoding="utf-8"))
         except Exception:
             return cfg
         for key in cfg.__dict__.keys():
@@ -1284,6 +1653,18 @@ class PhotoManagerWindow(QMainWindow):
         if lines:
             self.log_view.appendPlainText("\n".join(lines))
             self.log_view.ensureCursorVisible()
+        while True:
+            try:
+                callback = self.ui_queue.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                callback()
+            except Exception as exc:
+                self.log(f"ui update failed: {exc}")
+
+    def _post_ui(self, callback) -> None:
+        self.ui_queue.put(callback)
 
     def log(self, msg: str) -> None:
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -1336,11 +1717,15 @@ class PhotoManagerWindow(QMainWindow):
 
     def _startup_command(self, minimized: bool = True) -> str:
         exe = Path(sys.executable)
-        if exe.name.lower() == "python.exe":
+        if getattr(sys, "frozen", False):
+            cmd = f'"{exe}"'
+        elif exe.name.lower() == "python.exe":
             pythonw = exe.with_name("pythonw.exe")
             if pythonw.exists():
                 exe = pythonw
-        cmd = f'"{exe}" "{self.script_dir / "photo_manager_gui.py"}"'
+            cmd = f'"{exe}" "{self.script_dir / "photo_manager_gui.py"}"'
+        else:
+            cmd = f'"{exe}" "{self.script_dir / "photo_manager_gui.py"}"'
         if minimized:
             cmd += " --minimized"
         return cmd
@@ -1392,6 +1777,7 @@ class PhotoManagerWindow(QMainWindow):
         try:
             cfg = self._build_config_from_widgets()
             self._set_windows_startup(cfg.autostart_windows, cfg.start_minimized)
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
             self.config_path.write_text(json.dumps(cfg.__dict__, ensure_ascii=False, indent=2), encoding="utf-8")
             self.log(f"Settings saved to: {self.config_path}")
             self.log(
@@ -1482,6 +1868,566 @@ class PhotoManagerWindow(QMainWindow):
                 if count >= limit:
                     return count
         return count
+
+    def _set_table_item(self, table: QTableWidget, row: int, column: int, text: str, data=None) -> None:
+        item = QTableWidgetItem(text)
+        if data is not None:
+            item.setData(Qt.ItemDataRole.UserRole, data)
+        table.setItem(row, column, item)
+
+    def _open_path(self, path: Path) -> None:
+        if path.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        else:
+            QMessageBox.information(self, "Missing file", f"File does not exist:\n{path}")
+
+    def _app_version(self) -> str:
+        try:
+            from importlib import metadata
+
+            return metadata.version("photosync-tool")
+        except Exception:
+            return "0.1.0"
+
+    def _set_preview_image(self, label: QLabel, path: Path) -> None:
+        pixmap = QPixmap(str(path))
+        if pixmap.isNull():
+            label.setText(path.name)
+            label.setPixmap(QPixmap())
+            return
+        target = label.size()
+        if target.width() < 40 or target.height() < 40:
+            target = QSize(320, 320)
+        label.setText("")
+        label.setPixmap(
+            pixmap.scaled(
+                target,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+
+    def on_dashboard_refresh(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        try:
+            stats = dashboard_stats(cfg.root)
+        except Exception as exc:
+            self.dashboard_summary_label.setText(f"Dashboard unavailable: {exc}")
+            return
+
+        self.dashboard_summary_label.setText(
+            "Files: {total} | Present: {present} | AI metadata: {ai} | "
+            "Blur candidates: {blur} | Delete queue: {queue} | Sync errors: {errors}".format(
+                total=stats["total"],
+                present=stats["present"],
+                ai=stats["ai_count"],
+                blur=stats["blur_pending"],
+                queue=stats["delete_queued"],
+                errors=stats["sync_errors"],
+            )
+        )
+
+        self.dashboard_year_table.setRowCount(len(stats["years"]))
+        for row, item in enumerate(stats["years"]):
+            self._set_table_item(self.dashboard_year_table, row, 0, str(item["year"]))
+            self._set_table_item(self.dashboard_year_table, row, 1, str(item["count"]))
+
+        self.dashboard_folder_table.setRowCount(len(stats["folders"]))
+        for row, item in enumerate(stats["folders"]):
+            self._set_table_item(self.dashboard_folder_table, row, 0, str(item["folder"]))
+            self._set_table_item(self.dashboard_folder_table, row, 1, str(item["count"]))
+            self._set_table_item(self.dashboard_folder_table, row, 2, human_bytes(int(item["bytes"])))
+
+        events = stats["recent_events"]
+        self.dashboard_events_table.setRowCount(len(events))
+        for row, item in enumerate(events):
+            self._set_table_item(self.dashboard_events_table, row, 0, str(item.get("ts", "")))
+            self._set_table_item(self.dashboard_events_table, row, 1, str(item.get("mode", "")))
+            self._set_table_item(self.dashboard_events_table, row, 2, str(item.get("status", "")))
+            self._set_table_item(self.dashboard_events_table, row, 3, Path(str(item.get("src", ""))).name)
+            self._set_table_item(self.dashboard_events_table, row, 4, Path(str(item.get("dst", ""))).name)
+        self.log("dashboard: refreshed.")
+
+    def on_about(self) -> None:
+        QMessageBox.information(
+            self,
+            "About Photo Manager Pro",
+            (
+                f"Photo Manager Pro\n"
+                f"Version: {self._app_version()}\n\n"
+                "Local photo sync, gallery index, blur review, duplicate review, "
+                "safe delete queue, and light AI metadata."
+            ),
+        )
+
+    def on_check_updates(self) -> None:
+        self._start_worker("update-check", self._run_update_check_worker)
+
+    def _run_update_check_worker(self) -> None:
+        current = self._app_version()
+        try:
+            with urllib.request.urlopen("https://pypi.org/pypi/photosync-tool/json", timeout=10) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            latest = str(payload.get("info", {}).get("version", "unknown"))
+            message = f"Installed version: {current}\nLatest PyPI version: {latest}"
+        except Exception as exc:
+            message = f"Could not check PyPI updates:\n{exc}"
+        self._post_ui(lambda: QMessageBox.information(self, "Update Check", message))
+
+    def on_create_start_menu_shortcut(self) -> None:
+        if sys.platform != "win32":
+            QMessageBox.information(self, "Windows only", "Start Menu shortcut creation is Windows-only.")
+            return
+        try:
+            import os
+            import win32com.client  # type: ignore
+
+            start_menu = (
+                Path(os.environ["APPDATA"])
+                / "Microsoft"
+                / "Windows"
+                / "Start Menu"
+                / "Programs"
+            )
+            start_menu.mkdir(parents=True, exist_ok=True)
+            shortcut_path = start_menu / "Photo Manager Pro.lnk"
+            exe = Path(sys.executable)
+            if exe.name.lower() == "python.exe":
+                pythonw = exe.with_name("pythonw.exe")
+                if pythonw.exists():
+                    exe = pythonw
+
+            shell = win32com.client.Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortcut(str(shortcut_path))
+            shortcut.TargetPath = str(exe)
+            shortcut.Arguments = "-m photo_manager_gui"
+            shortcut.WorkingDirectory = str(self.script_dir)
+            icon_ref = resources.files(APP_ICON_PACKAGE).joinpath("photo_manager_icon.ico")
+            with resources.as_file(icon_ref) as icon_path:
+                shortcut.IconLocation = f"{icon_path},0"
+                shortcut.Save()
+            QMessageBox.information(self, "Shortcut created", f"Created:\n{shortcut_path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Shortcut failed", str(exc))
+
+    def _refresh_gallery_filter_options(self, root: Path) -> None:
+        current_year = self.gallery_year_combo.currentText()
+        current_status = self.gallery_status_combo.currentText()
+        try:
+            years, statuses = gallery_filter_options(root)
+        except Exception:
+            years, statuses = [], []
+        self.gallery_year_combo.blockSignals(True)
+        self.gallery_status_combo.blockSignals(True)
+        self.gallery_year_combo.clear()
+        self.gallery_year_combo.addItem("all")
+        self.gallery_year_combo.addItems(years)
+        self.gallery_status_combo.clear()
+        self.gallery_status_combo.addItem("present")
+        self.gallery_status_combo.addItem("all")
+        for status in statuses:
+            if status not in {"present", "all"}:
+                self.gallery_status_combo.addItem(status)
+        if current_year:
+            idx = self.gallery_year_combo.findText(current_year)
+            if idx >= 0:
+                self.gallery_year_combo.setCurrentIndex(idx)
+        if current_status:
+            idx = self.gallery_status_combo.findText(current_status)
+            if idx >= 0:
+                self.gallery_status_combo.setCurrentIndex(idx)
+        self.gallery_year_combo.blockSignals(False)
+        self.gallery_status_combo.blockSignals(False)
+
+    def _gallery_filters(self) -> tuple[str, str, Optional[float], str, int]:
+        blur_text = self.gallery_blur_max_edit.text().strip()
+        blur_max = float(blur_text) if blur_text else None
+        limit = self._parse_int(self.gallery_limit_edit.text(), "Gallery limit", 1)
+        return (
+            self.gallery_year_combo.currentText(),
+            self.gallery_status_combo.currentText(),
+            blur_max,
+            self.gallery_search_edit.text().strip(),
+            limit,
+        )
+
+    def on_gallery_refresh(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        try:
+            filters = self._gallery_filters()
+        except Exception as exc:
+            QMessageBox.critical(self, "Invalid gallery filters", str(exc))
+            return
+        self._refresh_gallery_filter_options(cfg.root)
+        self._start_worker("gallery-load", self._run_gallery_load_worker, cfg, filters)
+
+    def _run_gallery_load_worker(self, cfg: RuntimeConfig, filters) -> None:
+        year, status, blur_max, search, limit = filters
+        items = list_gallery_items(
+            cfg.root,
+            year=year,
+            status=status,
+            blur_max=blur_max,
+            search=search,
+            limit=limit,
+        )
+        payload = [(item, build_thumbnail(cfg.root, item.path)) for item in items]
+        self._post_ui(lambda payload=payload: self._populate_gallery(payload))
+
+    def _populate_gallery(self, payload: List[tuple[GalleryItem, Optional[Path]]]) -> None:
+        self.gallery_payload = payload
+        self.gallery_list.clear()
+        for item, thumb in payload:
+            icon = QIcon(str(thumb)) if thumb is not None else self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+            qitem = QListWidgetItem(icon, item.name)
+            qitem.setData(Qt.ItemDataRole.UserRole, str(item.path))
+            qitem.setToolTip(
+                f"{item.relative_path}\n"
+                f"Status: {item.status}\n"
+                f"Blur: {item.blur_score if item.blur_score is not None else '-'}\n"
+                f"Tags: {', '.join(item.tags)}\n"
+                f"{item.caption}"
+            )
+            self.gallery_list.addItem(qitem)
+        self.gallery_details.setPlainText(f"Loaded {len(payload)} items.")
+        self.gallery_preview_label.clear()
+        self.log(f"gallery: loaded {len(payload)} items.")
+
+    def _gallery_item_for_path(self, path: Path) -> Optional[GalleryItem]:
+        normalized = str(path)
+        for item, _thumb in self.gallery_payload:
+            if str(item.path) == normalized:
+                return item
+        return None
+
+    def on_gallery_selected(self, current: Optional[QListWidgetItem], _previous: Optional[QListWidgetItem] = None) -> None:
+        if current is None:
+            return
+        path = Path(str(current.data(Qt.ItemDataRole.UserRole)))
+        item = self._gallery_item_for_path(path)
+        self._set_preview_image(self.gallery_preview_label, path)
+        if item is None:
+            self.gallery_details.setPlainText(str(path))
+            return
+        details = [
+            str(item.path),
+            f"Relative: {item.relative_path}",
+            f"Year: {item.year or '-'}",
+            f"Status: {item.status}",
+            f"Size: {human_bytes(item.size_bytes)}",
+            f"Dimensions: {item.width or '-'} x {item.height or '-'}",
+            f"Blur: {item.blur_score if item.blur_score is not None else '-'} ({item.blur_status or '-'})",
+            f"Tags: {', '.join(item.tags) if item.tags else '-'}",
+            f"Caption: {item.caption or '-'}",
+        ]
+        self.gallery_details.setPlainText("\n".join(details))
+
+    def _selected_gallery_path(self) -> Optional[Path]:
+        item = self.gallery_list.currentItem()
+        if item is None:
+            return None
+        return Path(str(item.data(Qt.ItemDataRole.UserRole)))
+
+    def on_gallery_open_selected(self) -> None:
+        path = self._selected_gallery_path()
+        if path is not None:
+            self._open_path(path)
+
+    def on_gallery_queue_selected(self) -> None:
+        cfg = self._get_runtime_or_message()
+        path = self._selected_gallery_path()
+        if cfg is None or path is None:
+            return
+        enqueue_delete(cfg.root, path, reason="manual_gallery_review", source="gallery")
+        self.log(f"delete-queue: queued from gallery: {path.name}")
+        self.on_delete_queue_refresh()
+        self.on_dashboard_refresh()
+
+    def on_duplicate_scan(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        self._start_worker("duplicate-scan", self._run_duplicate_scan_worker, cfg)
+
+    def _run_duplicate_scan_worker(self, cfg: RuntimeConfig) -> None:
+        actions = scan_duplicates(
+            cfg.root,
+            include_nonmedia=cfg.include_nonmedia,
+            recursive=True,
+            log=self.log,
+        )
+        self._post_ui(lambda actions=actions: self._populate_duplicates(actions))
+
+    def _populate_duplicates(self, actions: List[DuplicateCandidate]) -> None:
+        self.duplicate_actions = actions
+        self.duplicates_table.setRowCount(len(actions))
+        for row, action in enumerate(actions):
+            self._set_table_item(self.duplicates_table, row, 0, str(action.remove), row)
+            self._set_table_item(self.duplicates_table, row, 1, str(action.keep))
+            self._set_table_item(self.duplicates_table, row, 2, human_bytes(action.size_bytes))
+            self._set_table_item(self.duplicates_table, row, 3, action.reason)
+        self.duplicate_details.setPlainText(f"Found {len(actions)} duplicate removal candidates.")
+        self.log(f"duplicates: table populated with {len(actions)} candidates.")
+
+    def _selected_duplicate_rows(self) -> List[int]:
+        rows = sorted({index.row() for index in self.duplicates_table.selectionModel().selectedRows()})
+        if not rows and self.duplicates_table.currentRow() >= 0:
+            rows = [self.duplicates_table.currentRow()]
+        return [row for row in rows if 0 <= row < len(self.duplicate_actions)]
+
+    def on_duplicate_selected(self) -> None:
+        rows = self._selected_duplicate_rows()
+        if not rows:
+            return
+        action = self.duplicate_actions[rows[0]]
+        self._set_preview_image(self.duplicate_keep_preview, action.keep)
+        self._set_preview_image(self.duplicate_remove_preview, action.remove)
+        self.duplicate_details.setPlainText(
+            "\n".join(
+                [
+                    f"Keep: {action.keep}",
+                    f"Duplicate: {action.remove}",
+                    f"Reason: {action.reason}",
+                    f"Group: {action.group_key}",
+                    f"Size: {human_bytes(action.size_bytes)}",
+                ]
+            )
+        )
+
+    def on_duplicate_open(self, which: str) -> None:
+        rows = self._selected_duplicate_rows()
+        if not rows:
+            return
+        action = self.duplicate_actions[rows[0]]
+        self._open_path(action.keep if which == "keep" else action.remove)
+
+    def _queue_duplicate_rows(self, rows: List[int]) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        queued = 0
+        for row in rows:
+            action = self.duplicate_actions[row]
+            enqueue_delete(
+                cfg.root,
+                action.remove,
+                reason=f"duplicate:{action.reason}",
+                source="duplicate-review",
+                details={"keep": str(action.keep), "group_key": action.group_key},
+            )
+            queued += 1
+        self.log(f"delete-queue: queued duplicates: {queued}")
+        self.on_delete_queue_refresh()
+        self.on_dashboard_refresh()
+
+    def on_duplicate_queue_selected(self) -> None:
+        self._queue_duplicate_rows(self._selected_duplicate_rows())
+
+    def on_duplicate_queue_all(self) -> None:
+        if not self.duplicate_actions:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Queue all duplicates",
+            f"Queue {len(self.duplicate_actions)} duplicate files for safe delete review?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer == QMessageBox.Yes:
+            self._queue_duplicate_rows(list(range(len(self.duplicate_actions))))
+
+    def _selected_delete_ids(self) -> List[int]:
+        ids: List[int] = []
+        for index in self.delete_table.selectionModel().selectedRows():
+            item = self.delete_table.item(index.row(), 0)
+            if item is not None:
+                ids.append(int(item.data(Qt.ItemDataRole.UserRole)))
+        return sorted(set(ids))
+
+    def on_delete_queue_refresh(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        status = self.delete_status_combo.currentText()
+        items = list_delete_queue(cfg.root, status=status, limit=1000)
+        self.delete_table.setRowCount(len(items))
+        for row, item in enumerate(items):
+            self._set_table_item(self.delete_table, row, 0, str(item.id), item.id)
+            self._set_table_item(self.delete_table, row, 1, str(item.path))
+            self._set_table_item(self.delete_table, row, 2, item.reason)
+            self._set_table_item(self.delete_table, row, 3, item.source)
+            self._set_table_item(self.delete_table, row, 4, item.status)
+            self._set_table_item(self.delete_table, row, 5, item.created_at)
+        self.log(f"delete-queue: refreshed {len(items)} items.")
+
+    def on_delete_queue_cancel_selected(self) -> None:
+        cfg = self._get_runtime_or_message()
+        ids = self._selected_delete_ids()
+        if cfg is None or not ids:
+            return
+        update_delete_items(cfg.root, ids, status="cancelled")
+        self.log(f"delete-queue: cancelled {len(ids)} items.")
+        self.on_delete_queue_refresh()
+        self.on_dashboard_refresh()
+
+    def on_delete_queue_trash_selected(self) -> None:
+        cfg = self._get_runtime_or_message()
+        ids = self._selected_delete_ids()
+        if cfg is None or not ids:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Trash selected",
+            f"Move {len(ids)} queued files to the system recycle bin?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer == QMessageBox.Yes:
+            self._start_worker("delete-queue-trash", self._run_delete_queue_trash_worker, cfg, ids)
+
+    def on_delete_queue_trash_all(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        items = list_delete_queue(cfg.root, status="queued", limit=100000)
+        ids = [item.id for item in items]
+        if not ids:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Trash all queued",
+            f"Move all {len(ids)} queued files to the system recycle bin?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer == QMessageBox.Yes:
+            self._start_worker("delete-queue-trash-all", self._run_delete_queue_trash_worker, cfg, ids)
+
+    def _run_delete_queue_trash_worker(self, cfg: RuntimeConfig, ids: List[int]) -> None:
+        trashed = trash_delete_items(cfg.root, ids, log=self.log)
+        self.log(f"delete-queue: trashed {trashed} files.")
+        self._post_ui(lambda: (self.on_delete_queue_refresh(), self.on_dashboard_refresh()))
+
+    def on_delete_queue_export(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        default_path = cfg.root / "photo_manager_delete_queue.csv"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export delete queue",
+            str(default_path),
+            "CSV files (*.csv);;All files (*.*)",
+        )
+        if not path:
+            return
+        out = export_delete_queue(cfg.root, Path(path))
+        self.log(f"delete-queue: exported {out}")
+
+    def on_open_recycle_bin(self) -> None:
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer.exe", "shell:RecycleBinFolder"])
+        else:
+            QMessageBox.information(self, "Recycle Bin", "Open your system trash from the file manager.")
+
+    def on_light_ai_run(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        try:
+            limit = self._parse_int(self.ai_limit_edit.text(), "AI limit", 1)
+        except Exception as exc:
+            QMessageBox.critical(self, "Invalid AI settings", str(exc))
+            return
+        self._start_worker(
+            "light-ai",
+            self._run_light_ai_worker,
+            cfg,
+            limit,
+            self.ai_only_missing_check.isChecked(),
+        )
+
+    def _run_light_ai_worker(self, cfg: RuntimeConfig, limit: int, only_missing: bool) -> None:
+        run_light_ai(
+            cfg.root,
+            limit=limit,
+            only_missing=only_missing,
+            bad_blur_threshold=cfg.blur_threshold,
+            log=self.log,
+        )
+        self._post_ui(lambda: (self.on_ai_search(), self.on_dashboard_refresh()))
+
+    def on_ai_search(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        rows = search_ai_metadata(cfg.root, search=self.ai_search_edit.text().strip(), limit=500)
+        self.ai_results_table.setRowCount(len(rows))
+        for row_index, row in enumerate(rows):
+            path = str(row.get("path", ""))
+            tags = ", ".join(parse_tags(row.get("tags_json", "")))
+            self._set_table_item(self.ai_results_table, row_index, 0, str(row.get("relative_path") or path), path)
+            self._set_table_item(self.ai_results_table, row_index, 1, str(row.get("year") or ""))
+            self._set_table_item(self.ai_results_table, row_index, 2, tags)
+            self._set_table_item(self.ai_results_table, row_index, 3, str(row.get("caption") or ""))
+            self._set_table_item(self.ai_results_table, row_index, 4, str(row.get("backend") or ""))
+        self.log(f"light-ai: search returned {len(rows)} rows.")
+
+    def on_ai_open_selected(self) -> None:
+        row = self.ai_results_table.currentRow()
+        if row < 0:
+            return
+        item = self.ai_results_table.item(row, 0)
+        if item is None:
+            return
+        path = item.data(Qt.ItemDataRole.UserRole)
+        if path:
+            self._open_path(Path(str(path)))
+
+    def on_queue_blur_candidates(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        if not cfg.blur_csv.exists():
+            QMessageBox.critical(self, "Missing CSV", f"Blur CSV does not exist:\n{cfg.blur_csv}")
+            return
+        decision_map = self._load_blur_decisions(cfg.blur_csv)
+        queued = 0
+        limit = cfg.auto_delete_max
+        with cfg.blur_csv.open("r", newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                raw_path = row.get("path", "").strip()
+                if not raw_path:
+                    continue
+                path = Path(raw_path)
+                if not path.is_absolute():
+                    path = (cfg.root / path).resolve()
+                else:
+                    path = path.resolve()
+                status = decision_map.get(str(path), PENDING_STATUS)
+                if status != PENDING_STATUS:
+                    continue
+                score = self._safe_float(row.get("score", "0"), 0.0)
+                if score > cfg.blur_threshold:
+                    continue
+                enqueue_delete(
+                    cfg.root,
+                    path,
+                    reason=f"blur_score:{score}",
+                    source="blur-queue",
+                    details={"score": score, "threshold": cfg.blur_threshold},
+                )
+                queued += 1
+                if limit > 0 and queued >= limit:
+                    break
+        self.log(f"delete-queue: queued blur candidates: {queued}")
+        self.on_delete_queue_refresh()
+        self.on_dashboard_refresh()
 
     def _run_sync_now_worker(self, cfg: RuntimeConfig) -> None:
         run_batch_sync(cfg, self.log)
@@ -1848,7 +2794,26 @@ def main() -> None:
     sys.argv = [sys.argv[0], *qt_args]
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    win = PhotoManagerWindow()
+    single_instance = SingleInstanceGuard(SINGLE_INSTANCE_SERVER_NAME)
+    if single_instance.notify_existing_instance():
+        sys.exit(0)
+    activation_state: Dict[str, object] = {"window": None, "pending": False}
+
+    def activate_primary_instance() -> None:
+        window = activation_state.get("window")
+        if isinstance(window, PhotoManagerWindow):
+            window._show_from_tray()
+        else:
+            activation_state["pending"] = True
+
+    single_instance.listen(activate_primary_instance)
+    app.aboutToQuit.connect(single_instance.close)
+
+    app_icon = load_app_icon()
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
+    win = PhotoManagerWindow(app_icon=app_icon)
+    activation_state["window"] = win
     if win.tray_icon is not None:
         app.setQuitOnLastWindowClosed(False)
     if args.minimized:
@@ -1859,6 +2824,8 @@ def main() -> None:
             win.log("Started minimized to tray.")
     else:
         win.show()
+    if activation_state.get("pending"):
+        QTimer.singleShot(0, win._show_from_tray)
     sys.exit(app.exec())
 
 

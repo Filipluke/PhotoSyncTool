@@ -7,6 +7,7 @@ name = "photosync-tool"
 version = "0.1.0"
 description = "Local desktop tool for organizing, syncing, indexing, and reviewing photos."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10"
 authors = [
     { name = "Filipluke" }
@@ -39,7 +40,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "build",
+    "pytest",
     "twine",
+]
+ai = [
+    "pytesseract",
+]
+exe = [
+    "pyinstaller",
 ]
 
 [project.urls]
@@ -63,6 +71,7 @@ py-modules = [
     "dedupe_photos",
     "dedupe_snap_only",
     "photo_manager_core",
+    "photo_manager_features",
     "photo_manager_gui",
     "photo_manager_index",
     "photo_manager_qt",
@@ -70,3 +79,7 @@ py-modules = [
     "remove_name_duplicates",
     "sort_photos_script",
 ]
+packages = ["photosync_tool_assets"]
+
+[tool.setuptools.package-data]
+photosync_tool_assets = ["*.png", "*.ico"]

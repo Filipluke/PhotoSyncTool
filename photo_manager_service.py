@@ -13,8 +13,9 @@ from typing import Optional
 
 from photo_manager_core import (
     BackgroundSyncService,
-    CONFIG_FILE_NAME,
     default_app_config,
+    default_config_path,
+    user_config_dir,
     load_app_config,
     resolve_runtime_config,
     run_batch_sync,
@@ -60,14 +61,13 @@ def script_dir() -> Path:
 
 def load_runtime_config(config_path: Optional[Path] = None):
     base_dir = script_dir()
-    config = config_path or (base_dir / CONFIG_FILE_NAME)
+    config = config_path or default_config_path()
     app_cfg = load_app_config(config, default_app_config(base_dir))
     return resolve_runtime_config(app_cfg, base_dir)
 
 
 def run_foreground(config_path: Optional[Path] = None, echo: bool = True) -> None:
-    base_dir = script_dir()
-    logger = FileLogger(base_dir / SERVICE_LOG_NAME, echo=echo)
+    logger = FileLogger(user_config_dir() / SERVICE_LOG_NAME, echo=echo)
     cfg = load_runtime_config(config_path)
 
     stop_event = threading.Event()
@@ -93,8 +93,7 @@ def run_foreground(config_path: Optional[Path] = None, echo: bool = True) -> Non
 
 
 def run_once(config_path: Optional[Path] = None, echo: bool = True) -> None:
-    base_dir = script_dir()
-    logger = FileLogger(base_dir / SERVICE_LOG_NAME, echo=echo)
+    logger = FileLogger(user_config_dir() / SERVICE_LOG_NAME, echo=echo)
     cfg = load_runtime_config(config_path)
     logger("One-shot sync starting.")
     run_batch_sync(cfg, logger)
@@ -123,8 +122,7 @@ if win32serviceutil is not None:
             if servicemanager is not None:
                 servicemanager.LogInfoMsg(f"{SERVICE_NAME} starting")
 
-            base_dir = script_dir()
-            logger = FileLogger(base_dir / SERVICE_LOG_NAME, echo=False)
+            logger = FileLogger(user_config_dir() / SERVICE_LOG_NAME, echo=False)
             cfg = load_runtime_config()
             self.runner = BackgroundSyncService(logger)
             self.runner.start(cfg)

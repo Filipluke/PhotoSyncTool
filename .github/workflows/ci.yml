@@ -20,11 +20,14 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install build tools
-        run: python -m pip install --upgrade build twine
+      - name: Install build and test tools
+        run: python -m pip install --upgrade build pytest twine
 
       - name: Parse Python source
         run: python -m compileall -q .
+
+      - name: Run tests
+        run: python -m pytest
 
       - name: Build package
         run: python -m build

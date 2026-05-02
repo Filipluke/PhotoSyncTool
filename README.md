@@ -1,107 +1,195 @@
 # Photo Manager Pro
 
-A local tool for organizing photos and videos. The app provides a PySide6 GUI, one-shot synchronization, background folder watching, and tools for detecting heavily blurred photos.
+Photo Manager Pro is a local desktop tool for organizing photos and videos. It has a PySide6 GUI, one-shot sync, background folder watching, blur detection, a local SQLite index, duplicate review, and safe cleanup tools.
 
-## Current Features
+The project is currently alpha. The main workflow works, but distribution still needs clean-machine testing, more service-mode hardening, and better automated GUI checks.
+
+## What Works
 
 - Sort files from a source folder into year-based folders.
-- Detect dates from EXIF with fallback to `mtime` or `ctime`.
+- Detect dates from EXIF, filename patterns like `20210924_132556.jpg`, then `mtime` or `ctime`.
 - Copy files with verification by fast fingerprint or full SHA256.
 - Optionally delete source files after successful synchronization.
 - Background sync mode powered by `watchdog`.
 - CSV synchronization log.
 - Blur scanning with OpenCV.
-- Local SQLite metadata index for files, sync events, blur scores, and future AI data.
-- Automatic background sync after the app starts.
-- Option to open the app on Windows startup.
+- Local SQLite metadata index for files, sync events, blur scores, and AI metadata.
+- Automatic background sync after app launch.
+- Optional app startup on Windows login.
+- Single-instance startup guard, so reopening the app focuses the existing process instead of creating another tray icon.
+- Headless runner and Windows Service commands.
+- Dashboard with library totals, year counts, top folders, sync errors, and recent events.
+- Thumbnail gallery with cached thumbnails, filters, preview, and text/tag search.
+- Duplicate review tab that scans by content hash and queues removals for review.
+- Safe Delete Queue with cancel, CSV export, and recycle-bin deletion.
+- Local Light AI pass for rough tags, captions, optional OCR, and search.
 
-## Running
+## Running From Source
 
 ```powershell
 py -m pip install -r requirements.txt
 py photo_manager_gui.py
 ```
 
-`photo_manager_gui.py` is a lightweight launcher. The main application lives in `photo_manager_qt.py`.
+`photo_manager_gui.py` is just the launcher. The main GUI lives in `photo_manager_qt.py`.
 
-After the first PyPI release, the app can also be installed as:
+After the first PyPI release, installation should look like this:
 
 ```powershell
 python -m pip install photosync-tool
 photo-manager-pro
 ```
 
+## Configuration
+
+User settings are stored outside the repository/application folder.
+
+On Windows, the default config path is:
+
+```text
+%APPDATA%\PhotoManagerPro\photo_manager_config.json
+```
+
+The headless service uses the same default config path, and writes its log to:
+
+```text
+%APPDATA%\PhotoManagerPro\photo_manager_service.log
+```
+
+If an old `photo_manager_config.json` exists next to the source files, the GUI can still read it as a legacy fallback. New saves go to the AppData location.
+
+## Windows EXE
+
+The Windows distribution target is `PhotoManagerPro.exe`. The GitHub release workflow builds it with PyInstaller, uploads it as an artifact, and attaches it to GitHub Releases.
+
+Local build:
+
+```powershell
+py -m pip install --upgrade ".[exe]"
+pyinstaller --noconfirm --onefile --windowed --name PhotoManagerPro --icon photosync_tool_assets/photo_manager_icon.ico --add-data "photosync_tool_assets;photosync_tool_assets" photo_manager_gui.py
+```
+
+The executable is written to `dist/PhotoManagerPro.exe`. `build/` and `dist/` are build outputs and should not be committed.
+
+## Windows Installer
+
+An Inno Setup script is available at `installer/PhotoManagerPro.iss`. It packages the built executable into a regular Windows installer.
+
+Build order:
+
+```powershell
+py -m pip install --upgrade ".[exe]"
+pyinstaller --noconfirm --onefile --windowed --name PhotoManagerPro --icon photosync_tool_assets/photo_manager_icon.ico --add-data "photosync_tool_assets;photosync_tool_assets" photo_manager_gui.py
+iscc installer\PhotoManagerPro.iss
+```
+
+The installer output is written to `release/`.
+
+## Tests
+
+```powershell
+py -m pip install -e ".[dev]"
+py -m pytest
+```
+
+The current tests cover date parsing, copy verification, safe destination naming, media filtering, and sync schedule logic.
+
+## Screenshots
+
+Screenshots are not committed yet. The capture plan and recommended filenames are documented in `docs/SCREENSHOTS.md`.
+
 ## Library Index
 
-The app maintains a local SQLite index named `photo_manager_index.sqlite3` in the selected photo root folder. It is intentionally local and disposable: it can be rebuilt from the library, sync logs, and blur CSVs.
+The app keeps a local SQLite index named `photo_manager_index.sqlite3` inside the selected photo root. The index is local and disposable: it can be rebuilt from the library, sync logs, and blur CSVs.
 
-The index currently stores:
+The index stores:
 
-- Media file paths, size, timestamps, year, dimensions, status, and optional quick hashes.
-- Sync events from batch sync, background sync, and the headless service.
-- Blur scores imported from `blur_tool.py`.
-- Placeholder storage for future AI captions, tags, and embeddings.
+- media file paths, sizes, timestamps, years, dimensions, status, and optional quick hashes,
+- sync events from batch sync, background sync, and the headless service,
+- blur scores imported from `blur_tool.py`,
+- captions, tags, OCR text, and future AI embedding data.
 
-In the GUI, use `Library Index -> Rebuild Index` to scan the current root folder, or `Import Blur CSV` to load existing blur scan results. Batch sync, background sync, the Windows service, blur scan, and blur auto-delete now update the index automatically.
+In the GUI, `Library Index -> Rebuild Index` scans the current root folder. `Import Blur CSV` imports existing blur scan results. Batch sync, background sync, Windows service, blur scan, and blur auto-delete all update the index.
+
+Dashboard, Gallery, Duplicates, Delete Queue, and Light AI use this same index. After changing the root folder or importing a large existing library, rebuild the index first.
+
+## Gallery, Duplicates, And Delete Queue
+
+Gallery thumbnails are cached in `.photo_manager_cache/thumbnails` inside the selected root. The cache is ignored by the indexer and can be deleted safely; it will be rebuilt as needed.
+
+Duplicate Review does not delete files directly. It adds candidates to the Safe Delete Queue. From there, decisions can be cancelled, exported to CSV, or moved to the system recycle bin.
+
+## Light AI
+
+Light AI is currently a local heuristic backend, not a heavy model. It can tag likely screenshots, documents, food, landscapes, people, and low-quality photos. OCR is optional.
+
+Optional OCR install:
+
+```powershell
+python -m pip install "photosync-tool[ai]"
+```
+
+OCR also needs a local Tesseract installation.
 
 ## Startup And Background Work
 
-The GUI has two separate startup options:
+The GUI has two startup options:
 
 - `Autostart background on launch` starts folder watching after the app launches.
 - `Open on Windows startup` adds an entry to `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, so the app starts when the current user logs in.
 
-This is not a full Windows service yet. The target design should split out a separate `photo_manager_service.py` process that reads the same `photo_manager_config.json`, runs without a window, and can be installed with `pywin32` or `NSSM`.
+There is also a headless entry point in `photo_manager_service.py`. It can run a one-shot sync, run as a foreground watcher, or expose Windows Service commands through `pywin32`:
+
+```powershell
+photo-manager-service once
+photo-manager-service run
+photo-manager-service install
+photo-manager-service start
+photo-manager-service stop
+```
+
+Service mode is implemented, but still needs real-world install/start/stop testing on a clean machine and better setup around logs, permissions, and uninstall behavior.
 
 ## Schedule
 
-The GUI includes a `Sync hours` field. It accepts one or more hour ranges:
+The GUI has a `Sync hours` field and a simple weekly schedule editor. The hour field accepts one or more ranges:
 
 - `0-24` means all day.
-- `8-18` means synchronization only during working hours.
-- `22-7` means an overnight window that crosses midnight.
+- `8-18` means sync only during that time window.
+- `22-7` means an overnight window crossing midnight.
 - `8-12,14-18` means multiple windows in one day.
 
-In background sync mode, files detected outside the allowed window are queued and processed when the window opens again. The next step is a full calendar or weekly schedule view, for example:
+In background sync mode, files detected outside the allowed window are queued and processed when the window opens again.
 
-- Weekdays.
-- Hour ranges when synchronization is allowed.
-- Separate windows for sync and AI/blur analysis.
-- A "pause until hour X" mode.
-- Restricting heavy work to nighttime.
+Still open:
 
-Technically, the current hour field should eventually evolve into JSON with a list of time windows and task types.
+- separate schedules for sync, blur analysis, and AI metadata,
+- a `pause until` mode,
+- restricting heavier work to nighttime,
+- a more durable retry queue for background tasks.
 
-## Local Or API AI
+## AI Direction
 
-AI could add practical features such as:
-
-- Photo tagging: people, documents, food, landscapes, screenshots, animals, cars.
-- Captions for search.
-- Semantic duplicate and near-duplicate detection.
-- Photo quality scoring: sharpness, exposure, closed eyes, motion blur.
-- Private or sensitive content detection before automatic moves.
-- OCR for screenshots and documents.
-- Automatic albums, such as vacations, university, work, or documents.
-
-I would not start with full Torch as a hard application dependency. A better path:
+Full Torch should not be a hard dependency for the desktop app. The better path is to keep heavier AI optional:
 
 1. Start with an API backend or ONNX Runtime as an optional backend.
-2. Use the SQLite index as the cache for tags, captions, embeddings, and review decisions.
+2. Use SQLite as the cache for tags, captions, embeddings, and review decisions.
 3. For local models, use `onnxruntime` with CLIP/SigLIP embeddings for similarity and search.
-4. Add `torch` later as an optional `requirements-ai.txt` package only when training or GPU-heavy models become necessary.
+4. Add `torch` later as a separate `requirements-ai.txt` package only when training or GPU-heavy models are needed.
 
-Torch is powerful, but heavy. For a desktop app that should remain stable and easy to run, ONNX Runtime or an external API will usually be less painful.
+Torch is powerful, but heavy. For a desktop tool that should stay easy to run, ONNX Runtime or an API backend is the more practical default.
 
-## Suggested Roadmap
+## Still Open
 
-- Real service/headless mode.
-- Work schedule and pause controls.
-- Background task queue with retry.
-- SQLite-backed search and gallery views.
-- Duplicate view with thumbnails.
-- Thumbnails and a fast gallery in the GUI.
-- Search by date, folder, tags, and AI captions.
-- Dedicated safe-delete panel with recycle bin and decision history.
-- Synchronization report export.
-- Optional AI panel: backend, model, batch size, GPU/CPU, embeddings cache.
+- Test and harden Windows Service install/start/stop on a clean Windows machine.
+- Test and polish the Inno Setup installer flow.
+- Add a signed release flow for `PhotoManagerPro.exe` and the installer.
+- Add automated GUI smoke tests.
+- Add a small fixture library for sync/index/gallery tests.
+- Add synchronization report export from the GUI.
+- Add pause controls and separate schedules for sync, blur, and AI work.
+- Add an optional hard-AI panel: ONNX/SigLIP or CLIP embeddings, backend, model, batch size, GPU/CPU, and embedding cache.
+
+## License
+
+This project is licensed under the MIT License.

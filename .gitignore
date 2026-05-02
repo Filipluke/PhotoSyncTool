@@ -8,6 +8,9 @@ venv/
 .mypy_cache/
 build/
 dist/
+*.spec
+release/
+releases/
 *.egg-info/
 photo_manager_config.json
 photo_manager_index.sqlite3*
