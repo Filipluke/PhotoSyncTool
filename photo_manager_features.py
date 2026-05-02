@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Callable, Iterable, Optional
 
 from photo_manager_index import (
+    INTERNAL_DIR_NAMES,
+    INTERNAL_FILE_NAMES,
     connect,
     default_index_path,
     normalize_path,
@@ -53,6 +55,10 @@ class DuplicateCandidate:
     reason: str
     group_key: str
     size_bytes: int
+
+
+class DuplicateScanCancelled(Exception):
+    pass
 
 
 @dataclass
@@ -480,19 +486,26 @@ def export_delete_queue(root: Path, out_path: Path) -> Path:
     return out_path
 
 
-def _iter_duplicate_files(root: Path, *, include_nonmedia: bool, recursive: bool) -> list[Path]:
+def _iter_duplicate_files(
+    root: Path,
+    *,
+    include_nonmedia: bool,
+    recursive: bool,
+    should_cancel: Optional[Callable[[], bool]] = None,
+) -> list[Path]:
     candidates: list[Path] = []
-    year_dirs = sorted(
-        [p for p in root.iterdir() if p.is_dir() and p.name.isdigit() and len(p.name) == 4],
-        key=lambda p: p.name,
-    )
-    special_dirs = [root / name for name in ("SnapShots", "Snapchat") if (root / name).is_dir()]
-    scan_dirs = year_dirs + special_dirs
-    for folder in scan_dirs:
-        iterator = folder.rglob("*") if recursive else folder.glob("*")
-        for path in iterator:
-            if is_media_file(path, include_nonmedia=include_nonmedia):
-                candidates.append(path)
+    iterator = root.rglob("*") if recursive else root.glob("*")
+    internal_dirs = {name.lower() for name in INTERNAL_DIR_NAMES}
+    internal_files = {name.lower() for name in INTERNAL_FILE_NAMES}
+    for path in iterator:
+        if should_cancel is not None and should_cancel():
+            raise DuplicateScanCancelled()
+        if any(part.lower() in internal_dirs for part in path.parts):
+            continue
+        if path.name.lower() in internal_files:
+            continue
+        if is_media_file(path, include_nonmedia=include_nonmedia):
+            candidates.append(path)
     return candidates
 
 
@@ -533,13 +546,26 @@ def scan_duplicates(
     include_nonmedia: bool = False,
     recursive: bool = True,
     log: Optional[Logger] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> list[DuplicateCandidate]:
-    files = _iter_duplicate_files(root, include_nonmedia=include_nonmedia, recursive=recursive)
+    def check_cancelled() -> None:
+        if should_cancel is not None and should_cancel():
+            if log is not None:
+                log("duplicates: scan cancelled")
+            raise DuplicateScanCancelled()
+
+    files = _iter_duplicate_files(
+        root,
+        include_nonmedia=include_nonmedia,
+        recursive=recursive,
+        should_cancel=should_cancel,
+    )
     if log is not None:
         log(f"duplicates: scanning {len(files)} media files")
 
     size_map: dict[int, list[Path]] = {}
     for path in files:
+        check_cancelled()
         try:
             size_map.setdefault(path.stat().st_size, []).append(path)
         except Exception:
@@ -551,6 +577,7 @@ def scan_duplicates(
     done = 0
     for group in size_groups:
         for path in group:
+            check_cancelled()
             done += 1
             try:
                 qfp_map.setdefault((path.stat().st_size, _quick_fingerprint(path)), []).append(path)
@@ -566,6 +593,7 @@ def scan_duplicates(
     for group in qfp_groups:
         sha_map: dict[str, list[Path]] = {}
         for path in group:
+            check_cancelled()
             done += 1
             try:
                 sha_map.setdefault(_sha256(path), []).append(path)

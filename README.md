@@ -20,7 +20,7 @@ The project is currently alpha. The main workflow works, but distribution still 
 - Headless runner and Windows Service commands.
 - Dashboard with library totals, year counts, top folders, sync errors, and recent events.
 - Thumbnail gallery with cached thumbnails, filters, preview, and text/tag search.
-- Duplicate review tab that scans by content hash and queues removals for review.
+- Duplicate review tab that scans by content hash, supports scan cancellation, and queues removals for review.
 - Safe Delete Queue with cancel, CSV export, and recycle-bin deletion.
 - Local Light AI pass for rough tags, captions, optional OCR, and search.
 
@@ -71,6 +71,26 @@ pyinstaller --noconfirm --onefile --windowed --name PhotoManagerPro --icon photo
 
 The executable is written to `dist/PhotoManagerPro.exe`. `build/` and `dist/` are build outputs and should not be committed.
 
+## Release Build Script
+
+The Bash release script builds the local release set:
+
+- Python source/wheel distributions for PyPI in `dist/`,
+- `dist/PhotoManagerPro.exe`,
+- `release/PhotoManagerProSetup-<version>.exe` when Inno Setup `iscc` is available.
+
+```bash
+PYTHON=py scripts/build_release.sh
+```
+
+Run it from Git Bash, WSL, or another Bash environment.
+
+Publishing to PyPI is opt-in:
+
+```bash
+PYTHON=py scripts/build_release.sh --upload-pypi
+```
+
 ## Windows Installer
 
 An Inno Setup script is available at `installer/PhotoManagerPro.iss`. It packages the built executable into a regular Windows installer.
@@ -97,6 +117,16 @@ The current tests cover date parsing, copy verification, safe destination naming
 ## Screenshots
 
 Screenshots are not committed yet. The capture plan and recommended filenames are documented in `docs/SCREENSHOTS.md`.
+
+## GitHub Pages
+
+The static GitHub Pages site lives in `docs/`. The page is deployed by `.github/workflows/pages.yml` and expects screenshots in `docs/screenshots/`.
+
+Start with:
+
+- `docs/screenshots/dashboard.png`
+- `docs/screenshots/gallery.png`
+- `docs/screenshots/duplicates.png`
 
 ## Library Index
 

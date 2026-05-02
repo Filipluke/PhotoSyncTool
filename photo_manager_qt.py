@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import queue
 import shutil
@@ -12,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from importlib import resources
@@ -39,6 +41,7 @@ from photo_manager_index import (
 )
 from photo_manager_features import (
     DuplicateCandidate,
+    DuplicateScanCancelled,
     GalleryItem,
     build_thumbnail,
     dashboard_stats,
@@ -676,6 +679,7 @@ class PhotoManagerWindow(QMainWindow):
         self.worker_thread: Optional[threading.Thread] = None
         self.worker_name = ""
         self.sync_service = SyncWatchService(self)
+        self.duplicate_scan_cancel_event = threading.Event()
         self.gallery_payload: List[tuple[GalleryItem, Optional[Path]]] = []
         self.duplicate_actions: List[DuplicateCandidate] = []
 
@@ -992,6 +996,7 @@ class PhotoManagerWindow(QMainWindow):
         self.gallery_queue_btn.clicked.connect(self.on_gallery_queue_selected)
         self.gallery_list.currentItemChanged.connect(self.on_gallery_selected)
         self.duplicate_scan_btn.clicked.connect(self.on_duplicate_scan)
+        self.duplicate_cancel_scan_btn.clicked.connect(self.on_duplicate_cancel_scan)
         self.duplicate_queue_selected_btn.clicked.connect(self.on_duplicate_queue_selected)
         self.duplicate_queue_all_btn.clicked.connect(self.on_duplicate_queue_all)
         self.duplicate_open_keep_btn.clicked.connect(lambda: self.on_duplicate_open("keep"))
@@ -1130,12 +1135,16 @@ class PhotoManagerWindow(QMainWindow):
         toolbar = QHBoxLayout()
         self.duplicate_scan_btn = QPushButton("Scan Duplicates")
         self.duplicate_scan_btn.setObjectName("secondaryAction")
+        self.duplicate_cancel_scan_btn = QPushButton("Cancel Scan")
+        self.duplicate_cancel_scan_btn.setObjectName("secondaryAction")
+        self.duplicate_cancel_scan_btn.setEnabled(False)
         self.duplicate_queue_selected_btn = QPushButton("Queue Selected")
         self.duplicate_queue_all_btn = QPushButton("Queue All")
         self.duplicate_queue_all_btn.setObjectName("dangerAction")
         self.duplicate_open_keep_btn = QPushButton("Open Keep")
         self.duplicate_open_remove_btn = QPushButton("Open Remove")
         toolbar.addWidget(self.duplicate_scan_btn)
+        toolbar.addWidget(self.duplicate_cancel_scan_btn)
         toolbar.addStretch(1)
         toolbar.addWidget(self.duplicate_open_keep_btn)
         toolbar.addWidget(self.duplicate_open_remove_btn)
@@ -1695,10 +1704,10 @@ class PhotoManagerWindow(QMainWindow):
                     writer.writerow(row)
         return log_path
 
-    def _start_worker(self, name: str, target, *args) -> None:
+    def _start_worker(self, name: str, target, *args) -> bool:
         if self.worker_thread is not None and self.worker_thread.is_alive():
             QMessageBox.information(self, "Task in progress", f"Task already running: {self.worker_name}")
-            return
+            return False
 
         self.worker_name = name
 
@@ -1714,6 +1723,7 @@ class PhotoManagerWindow(QMainWindow):
 
         self.worker_thread = threading.Thread(target=run, daemon=True)
         self.worker_thread.start()
+        return True
 
     def _startup_command(self, minimized: bool = True) -> str:
         exe = Path(sys.executable)
@@ -1890,7 +1900,27 @@ class PhotoManagerWindow(QMainWindow):
             return "0.1.0"
 
     def _set_preview_image(self, label: QLabel, path: Path) -> None:
-        pixmap = QPixmap(str(path))
+        pixmap = QPixmap()
+        try:
+            from PIL import Image, ImageOps
+
+            with warnings.catch_warnings():
+                if hasattr(Image, "DecompressionBombWarning"):
+                    warnings.simplefilter("ignore", Image.DecompressionBombWarning)
+                img = Image.open(path)
+            with img:
+                img = ImageOps.exif_transpose(img)
+                if img.mode in {"RGBA", "LA"}:
+                    bg = Image.new("RGBA", img.size, (22, 25, 30, 255))
+                    bg.alpha_composite(img.convert("RGBA"))
+                    img = bg.convert("RGB")
+                else:
+                    img = img.convert("RGB")
+                data = io.BytesIO()
+                img.save(data, format="PNG")
+                pixmap.loadFromData(data.getvalue())
+        except Exception:
+            pixmap = QPixmap(str(path))
         if pixmap.isNull():
             label.setText(path.name)
             label.setPixmap(QPixmap())
@@ -2151,16 +2181,47 @@ class PhotoManagerWindow(QMainWindow):
         cfg = self._get_runtime_or_message()
         if cfg is None:
             return
-        self._start_worker("duplicate-scan", self._run_duplicate_scan_worker, cfg)
+        self.duplicate_scan_cancel_event.clear()
+        if self._start_worker("duplicate-scan", self._run_duplicate_scan_worker, cfg):
+            self.duplicate_scan_btn.setEnabled(False)
+            self.duplicate_cancel_scan_btn.setEnabled(True)
+            self.duplicate_details.setPlainText("Duplicate scan running...")
+
+    def on_duplicate_cancel_scan(self) -> None:
+        if self.worker_name != "duplicate-scan":
+            return
+        self.duplicate_scan_cancel_event.set()
+        self.duplicate_cancel_scan_btn.setEnabled(False)
+        self.duplicate_details.setPlainText("Cancelling duplicate scan...")
+        self.log("duplicates: cancel requested")
 
     def _run_duplicate_scan_worker(self, cfg: RuntimeConfig) -> None:
-        actions = scan_duplicates(
-            cfg.root,
-            include_nonmedia=cfg.include_nonmedia,
-            recursive=True,
-            log=self.log,
-        )
-        self._post_ui(lambda actions=actions: self._populate_duplicates(actions))
+        try:
+            try:
+                actions = scan_duplicates(
+                    cfg.root,
+                    include_nonmedia=cfg.include_nonmedia,
+                    recursive=True,
+                    log=self.log,
+                    should_cancel=self.duplicate_scan_cancel_event.is_set,
+                )
+            except DuplicateScanCancelled:
+                self._post_ui(self._duplicate_scan_cancelled)
+                return
+            self._post_ui(lambda actions=actions: self._populate_duplicates(actions))
+        finally:
+            self._post_ui(self._duplicate_scan_finished)
+
+    def _duplicate_scan_finished(self) -> None:
+        self.duplicate_scan_btn.setEnabled(True)
+        self.duplicate_cancel_scan_btn.setEnabled(False)
+        self.duplicate_scan_cancel_event.clear()
+
+    def _duplicate_scan_cancelled(self) -> None:
+        self.duplicate_scan_btn.setEnabled(True)
+        self.duplicate_cancel_scan_btn.setEnabled(False)
+        self.duplicate_scan_cancel_event.clear()
+        self.duplicate_details.setPlainText("Duplicate scan cancelled. Existing table results were left unchanged.")
 
     def _populate_duplicates(self, actions: List[DuplicateCandidate]) -> None:
         self.duplicate_actions = actions

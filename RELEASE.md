@@ -38,6 +38,24 @@ python -m build
 python -m twine check dist/*
 ```
 
+## Local Release Script
+
+For a full local release build from Git Bash:
+
+```bash
+PYTHON=py scripts/build_release.sh
+```
+
+The script requires Bash, for example Git Bash or WSL on Windows.
+
+The script builds PyPI distributions, runs `twine check`, builds `dist/PhotoManagerPro.exe`, and builds the Inno Setup installer when `iscc` is available in `PATH`.
+
+PyPI upload is not automatic. To upload after the checks pass:
+
+```bash
+PYTHON=py scripts/build_release.sh --upload-pypi
+```
+
 ## Windows EXE Verification
 
 Build the executable:

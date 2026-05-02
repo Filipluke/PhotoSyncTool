@@ -10,6 +10,14 @@ Recommended files:
 - `docs/screenshots/duplicates.png` - Duplicate Review tab with sample duplicate candidates.
 - `docs/screenshots/delete-queue.png` - Safe Delete Queue with queued items.
 
+The GitHub Pages starter site currently links directly to:
+
+- `docs/screenshots/dashboard.png`
+- `docs/screenshots/gallery.png`
+- `docs/screenshots/duplicates.png`
+
+Add those three first so the landing page stops showing browser image placeholders.
+
 Suggested capture flow:
 
 1. Create a small demo photo root outside the repository.

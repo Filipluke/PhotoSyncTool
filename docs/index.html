@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Photo Manager Pro is a local Windows desktop tool for organizing, syncing, indexing, and reviewing photo libraries."
+    >
+    <title>Photo Manager Pro</title>
+    <link rel="stylesheet" href="assets/site.css">
+  </head>
+  <body>
+    <header class="hero">
+      <nav class="nav" aria-label="Main navigation">
+        <a class="brand" href="#">Photo Manager Pro</a>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#screenshots">Screenshots</a>
+          <a href="#download">Download</a>
+          <a href="https://github.com/Filipluke/PhotoSyncTool">GitHub</a>
+        </div>
+      </nav>
+
+      <section class="hero-copy">
+        <p class="eyebrow">Local photo organization for Windows</p>
+        <h1>Photo Manager Pro</h1>
+        <p class="lead">
+          A desktop workflow for sorting, indexing, reviewing, and cleaning up photo libraries
+          without sending files to the cloud.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/Filipluke/PhotoSyncTool/releases/latest">Latest release</a>
+          <a class="button secondary" href="https://github.com/Filipluke/PhotoSyncTool">Source code</a>
+        </div>
+      </section>
+    </header>
+
+    <main>
+      <section id="features" class="section">
+        <div class="section-heading">
+          <p class="eyebrow">What it does</p>
+          <h2>Built around practical library maintenance</h2>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <h3>Sync and sort</h3>
+            <p>Copies media into year folders using EXIF, filename dates, and filesystem timestamps as fallbacks.</p>
+          </article>
+          <article>
+            <h3>Index locally</h3>
+            <p>Stores file metadata, sync events, blur scores, captions, tags, and review decisions in SQLite.</p>
+          </article>
+          <article>
+            <h3>Review safely</h3>
+            <p>Queues duplicates and low-quality candidates before moving files to the recycle bin.</p>
+          </article>
+          <article>
+            <h3>Run in the background</h3>
+            <p>Watches folders, supports startup options, and keeps a single app instance active in the tray.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="screenshots" class="section band">
+        <div class="section-heading">
+          <p class="eyebrow">Screenshots</p>
+          <h2>Desktop views</h2>
+        </div>
+        <div class="screenshot-grid">
+          <figure>
+            <img
+              src="screenshots/dashboard.png"
+              alt="Dashboard view"
+              onerror="this.hidden=true; this.nextElementSibling.hidden=false"
+            >
+            <a class="image-placeholder" href="screenshots/dashboard.png" hidden>dashboard.png</a>
+            <figcaption>Dashboard and library summary</figcaption>
+          </figure>
+          <figure>
+            <img
+              src="screenshots/gallery.png"
+              alt="Gallery view"
+              onerror="this.hidden=true; this.nextElementSibling.hidden=false"
+            >
+            <a class="image-placeholder" href="screenshots/gallery.png" hidden>gallery.png</a>
+            <figcaption>Gallery with preview and metadata</figcaption>
+          </figure>
+          <figure>
+            <img
+              src="screenshots/duplicates.png"
+              alt="Duplicate review view"
+              onerror="this.hidden=true; this.nextElementSibling.hidden=false"
+            >
+            <a class="image-placeholder" href="screenshots/duplicates.png" hidden>duplicates.png</a>
+            <figcaption>Duplicate review and safe delete flow</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="download" class="section download">
+        <div>
+          <p class="eyebrow">Distribution</p>
+          <h2>Alpha builds ship through GitHub Releases</h2>
+          <p>
+            Release automation builds a Windows executable. Local scripts can also build PyPI
+            distributions and an Inno Setup installer.
+          </p>
+        </div>
+        <div class="command-box" aria-label="Install command">
+          <code>python -m pip install photosync-tool</code>
+          <code>photo-manager-pro</code>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

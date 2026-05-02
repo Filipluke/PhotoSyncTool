@@ -10,6 +10,10 @@
 - Expanded release documentation with exe, installer, Windows Service, screenshots, and signing notes.
 - Moved the default GUI/service config location to the per-user AppData config directory.
 - Added a single-instance guard so reopening the app activates the existing instance instead of creating extra tray icons.
+- Added a Bash release build script for PyPI distributions, Windows executable builds, and optional installer/PyPI upload steps.
+- Added a GitHub Pages starter site with screenshot placeholders and a Pages deployment workflow.
+- Added cancellation support for duplicate scans in the GUI.
+- Fixed gallery preview orientation for photos with EXIF rotation metadata.
 
 ## 0.1.0 - 2026-04-30
 
