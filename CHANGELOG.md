@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1 - 2026-05-03
+
 - Added MIT license metadata and `LICENSE`.
 - Removed tracked Python bytecode cache files from the repository.
 - Added pytest coverage for date parsing, copy verification, media filtering, and schedule logic.
@@ -14,6 +16,7 @@
 - Added a GitHub Pages starter site with screenshot placeholders and a Pages deployment workflow.
 - Added cancellation support for duplicate scans in the GUI.
 - Fixed gallery preview orientation for photos with EXIF rotation metadata.
+- Removed old standalone duplicate-cleanup scripts from the packaged project.
 
 ## 0.1.0 - 2026-04-30
 

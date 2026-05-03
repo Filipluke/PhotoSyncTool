@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "photosync-tool"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local desktop tool for organizing, syncing, indexing, and reviewing photos."
 readme = "README.md"
 license = "MIT"
@@ -61,22 +61,16 @@ photo-manager-service = "photo_manager_service:main"
 photo-manager-index = "photo_manager_index:main"
 photo-blur-tool = "blur_tool:main"
 photo-sorter = "sort_photos_script:main"
-photo-dedupe = "dedupe_photos:main"
-photo-dedupe-snap = "dedupe_snap_only:main"
-photo-remove-name-dupes = "remove_name_duplicates:main"
 
 [tool.setuptools]
 py-modules = [
     "blur_tool",
-    "dedupe_photos",
-    "dedupe_snap_only",
     "photo_manager_core",
     "photo_manager_features",
     "photo_manager_gui",
     "photo_manager_index",
     "photo_manager_qt",
     "photo_manager_service",
-    "remove_name_duplicates",
     "sort_photos_script",
 ]
 packages = ["photosync_tool_assets"]
