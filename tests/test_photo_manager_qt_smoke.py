@@ -37,10 +37,23 @@ def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, 
     try:
         tab_names = [window.workspace_tabs.tabText(index) for index in range(window.workspace_tabs.count())]
 
-        assert tab_names == ["Compare", "Dashboard", "Gallery", "Duplicates", "Delete Queue", "Light AI"]
+        assert tab_names == [
+            "Dashboard",
+            "Gallery",
+            "Duplicates",
+            "Cleanup",
+            "AI Metadata",
+            "Sync Plan",
+            "Settings",
+            "Diagnostics",
+        ]
         assert window.windowTitle() == "Photo Manager Pro"
-        assert window.dashboard_export_btn.text() == "Export Sync Report"
+        assert window.workspace_tabs.currentIndex() == 0
+        assert window.dashboard_export_btn.text() == "Export Report"
+        assert window.run_sync_btn.text() == "Sync Now"
+        assert window.start_background_btn.text() == "Start Watching"
         assert window.root_edit.text() == str(root)
+        assert "Library:" in window.root_summary_label.text()
         assert "Source folder does not exist." in [
             window.source_preview_list.item(index).text() for index in range(window.source_preview_list.count())
         ]

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refreshed the desktop GUI with a product-style command bar, dashboard-first workspace, dedicated Settings and Diagnostics tabs, summary metric cards, and safer cleanup action hierarchy.
+
 ## 0.1.2 - 2026-05-06
 
 - Added dashboard sync report export for indexed synchronization events.

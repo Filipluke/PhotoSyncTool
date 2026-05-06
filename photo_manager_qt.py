@@ -683,6 +683,7 @@ class PhotoManagerWindow(QMainWindow):
         self.duplicate_scan_cancel_event = threading.Event()
         self.gallery_payload: List[tuple[GalleryItem, Optional[Path]]] = []
         self.duplicate_actions: List[DuplicateCandidate] = []
+        self.next_action_target = "settings"
 
         self.sync_log_columns = ["ts", "mode", "src", "dst", "year", "flags", "status"]
 
@@ -710,47 +711,164 @@ class PhotoManagerWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         root = QWidget()
+        root.setObjectName("appRoot")
         self.setCentralWidget(root)
         main_layout = QVBoxLayout(root)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(14, 14, 14, 14)
+        main_layout.setSpacing(12)
 
-        top_bar = QGroupBox("Operations")
-        top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(10, 8, 10, 8)
-        top_layout.setSpacing(8)
+        main_layout.addWidget(self._build_command_bar())
 
-        self.compare_btn = QPushButton("Compare Preview")
-        self.compare_btn.setObjectName("primaryAction")
-        self.compare_btn.setMinimumHeight(38)
-        self.run_sync_btn = QPushButton("Synchronize")
+        self.workspace_tabs = QTabWidget()
+        self.workspace_tabs.setObjectName("workspaceTabs")
+        self.workspace_tabs.setDocumentMode(True)
+        self.workspace_tabs.addTab(self._build_dashboard_tab(), "Dashboard")
+        self.workspace_tabs.addTab(self._build_gallery_tab(), "Gallery")
+        self.workspace_tabs.addTab(self._build_duplicates_tab(), "Duplicates")
+        self.workspace_tabs.addTab(self._build_delete_queue_tab(), "Cleanup")
+        self.workspace_tabs.addTab(self._build_ai_tab(), "AI Metadata")
+        self.workspace_tabs.addTab(self._build_compare_tab(), "Sync Plan")
+        self.workspace_tabs.addTab(self._build_settings_tab(), "Settings")
+        self.workspace_tabs.addTab(self._build_diagnostics_tab(), "Diagnostics")
+        main_layout.addWidget(self.workspace_tabs, stretch=1)
+
+        self.save_settings_btn.clicked.connect(self.on_save_settings)
+        self.compare_btn.clicked.connect(self.on_open_sync_plan)
+        self.run_sync_btn.clicked.connect(self.on_run_sync_now)
+        self.start_background_btn.clicked.connect(self.on_start_background)
+        self.stop_background_btn.clicked.connect(self.on_stop_background)
+        self.open_settings_btn.clicked.connect(lambda: self.workspace_tabs.setCurrentWidget(self.settings_tab))
+        self.open_diagnostics_btn.clicked.connect(lambda: self.workspace_tabs.setCurrentWidget(self.diagnostics_tab))
+        self.next_action_btn.clicked.connect(self.on_next_best_action)
+        self.next_settings_btn.clicked.connect(lambda: self.workspace_tabs.setCurrentWidget(self.settings_tab))
+        self.edit_schedule_btn.clicked.connect(self.on_edit_schedule)
+        self.sync_hours_edit.textChanged.connect(lambda _text: self._refresh_schedule_summary())
+        self.install_service_btn.clicked.connect(lambda: self.on_service_command("install"))
+        self.start_service_btn.clicked.connect(lambda: self.on_service_command("start"))
+        self.stop_service_btn.clicked.connect(lambda: self.on_service_command("stop"))
+        self.uninstall_service_btn.clicked.connect(lambda: self.on_service_command("uninstall"))
+        self.rebuild_index_btn.clicked.connect(self.on_rebuild_index)
+        self.import_blur_index_btn.clicked.connect(self.on_import_blur_index)
+        self.blur_scan_btn.clicked.connect(self.on_blur_scan)
+        self.blur_review_btn.clicked.connect(self.on_blur_review)
+        self.blur_queue_btn.clicked.connect(self.on_queue_blur_candidates)
+        self.blur_autodelete_btn.clicked.connect(self.on_blur_auto_delete)
+        self.dashboard_refresh_btn.clicked.connect(self.on_dashboard_refresh)
+        self.dashboard_export_btn.clicked.connect(self.on_dashboard_export_sync_report)
+        self.about_btn.clicked.connect(self.on_about)
+        self.check_updates_btn.clicked.connect(self.on_check_updates)
+        self.start_menu_shortcut_btn.clicked.connect(self.on_create_start_menu_shortcut)
+        self.gallery_refresh_btn.clicked.connect(self.on_gallery_refresh)
+        self.gallery_search_edit.returnPressed.connect(self.on_gallery_refresh)
+        self.gallery_open_btn.clicked.connect(self.on_gallery_open_selected)
+        self.gallery_queue_btn.clicked.connect(self.on_gallery_queue_selected)
+        self.gallery_list.currentItemChanged.connect(self.on_gallery_selected)
+        self.duplicate_scan_btn.clicked.connect(self.on_duplicate_scan)
+        self.duplicate_cancel_scan_btn.clicked.connect(self.on_duplicate_cancel_scan)
+        self.duplicate_queue_selected_btn.clicked.connect(self.on_duplicate_queue_selected)
+        self.duplicate_queue_all_btn.clicked.connect(self.on_duplicate_queue_all)
+        self.duplicate_open_keep_btn.clicked.connect(lambda: self.on_duplicate_open("keep"))
+        self.duplicate_open_remove_btn.clicked.connect(lambda: self.on_duplicate_open("remove"))
+        self.duplicates_table.itemSelectionChanged.connect(self.on_duplicate_selected)
+        self.delete_refresh_btn.clicked.connect(self.on_delete_queue_refresh)
+        self.delete_status_combo.currentTextChanged.connect(lambda _text: self.on_delete_queue_refresh())
+        self.delete_cancel_btn.clicked.connect(self.on_delete_queue_cancel_selected)
+        self.delete_trash_selected_btn.clicked.connect(self.on_delete_queue_trash_selected)
+        self.delete_trash_all_btn.clicked.connect(self.on_delete_queue_trash_all)
+        self.delete_export_btn.clicked.connect(self.on_delete_queue_export)
+        self.delete_recycle_btn.clicked.connect(self.on_open_recycle_bin)
+        self.ai_run_btn.clicked.connect(self.on_light_ai_run)
+        self.ai_search_btn.clicked.connect(self.on_ai_search)
+        self.ai_search_edit.returnPressed.connect(self.on_ai_search)
+        self.ai_open_btn.clicked.connect(self.on_ai_open_selected)
+
+    def _build_command_bar(self) -> QWidget:
+        bar = QWidget()
+        bar.setObjectName("commandBar")
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(12)
+
+        title_block = QWidget()
+        title_layout = QVBoxLayout(title_block)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(2)
+        app_title = QLabel("Photo Manager Pro")
+        app_title.setObjectName("appTitle")
+        app_subtitle = QLabel("Local photo sync, review, cleanup, and metadata search")
+        app_subtitle.setObjectName("appSubtitle")
+        self.root_summary_label = QLabel("Library: not configured")
+        self.root_summary_label.setObjectName("pathInline")
+        title_layout.addWidget(app_title)
+        title_layout.addWidget(app_subtitle)
+        title_layout.addWidget(self.root_summary_label)
+
+        self.bg_status_label = QLabel("Watching paused")
+        self.bg_status_label.setObjectName("statusPill")
+        self.bg_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.bg_status_label.setFixedHeight(34)
+        self.bg_status_label.setMinimumWidth(132)
+        self.compare_btn = QPushButton("Preview Sync Plan")
+        self.compare_btn.setObjectName("secondaryAction")
+        self.run_sync_btn = QPushButton("Sync Now")
         self.run_sync_btn.setObjectName("primaryAction")
-        self.run_sync_btn.setMinimumHeight(38)
-        self.start_background_btn = QPushButton("Start BG")
-        self.stop_background_btn = QPushButton("Stop BG")
-        self.bg_status_label = QLabel("Background sync: stopped")
-        self.bg_status_label.setObjectName("statusLabel")
+        self.start_background_btn = QPushButton("Start Watching")
+        self.start_background_btn.setObjectName("secondaryAction")
+        self.stop_background_btn = QPushButton("Stop Watching")
+        self.stop_background_btn.setObjectName("quietAction")
+        self.open_settings_btn = QPushButton("Settings")
+        self.open_settings_btn.setObjectName("toolbarButton")
+        self.open_diagnostics_btn = QPushButton("Diagnostics")
+        self.open_diagnostics_btn.setObjectName("toolbarButton")
 
-        top_layout.addWidget(self.compare_btn)
-        top_layout.addWidget(self.run_sync_btn)
-        top_layout.addSpacing(8)
-        top_layout.addWidget(self.start_background_btn)
-        top_layout.addWidget(self.stop_background_btn)
-        top_layout.addSpacing(14)
-        top_layout.addWidget(self.bg_status_label)
-        top_layout.addStretch(1)
-        main_layout.addWidget(top_bar)
+        for btn in (
+            self.compare_btn,
+            self.run_sync_btn,
+            self.start_background_btn,
+            self.stop_background_btn,
+            self.open_settings_btn,
+            self.open_diagnostics_btn,
+        ):
+            btn.setMinimumHeight(36)
 
-        workspace_splitter = QSplitter()
-        workspace_splitter.setChildrenCollapsible(False)
+        layout.addWidget(title_block, stretch=1)
+        layout.addWidget(self.bg_status_label)
+        layout.addWidget(self.compare_btn)
+        layout.addWidget(self.run_sync_btn)
+        layout.addWidget(self.start_background_btn)
+        layout.addWidget(self.stop_background_btn)
+        layout.addSpacing(6)
+        layout.addWidget(self.open_settings_btn)
+        layout.addWidget(self.open_diagnostics_btn)
+        return bar
 
-        left_panel = QWidget()
-        left_panel.setObjectName("settingsPanel")
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(8)
+    def _build_settings_tab(self) -> QWidget:
+        self.settings_tab = QWidget()
+        page_layout = QVBoxLayout(self.settings_tab)
+        page_layout.setContentsMargins(14, 14, 14, 14)
+        page_layout.setSpacing(12)
+        page_layout.addLayout(
+            self._page_header(
+                "Settings",
+                "Configure library locations, sync behavior, background service, indexing, and cleanup tools.",
+            )
+        )
 
-        config_group = QGroupBox("Configuration")
+        scroll = QScrollArea()
+        scroll.setObjectName("settingsScroll")
+        scroll.viewport().setObjectName("settingsViewport")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        settings_panel = QWidget()
+        settings_panel.setObjectName("settingsPanel")
+        settings_layout = QGridLayout(settings_panel)
+        settings_layout.setContentsMargins(0, 0, 0, 0)
+        settings_layout.setHorizontalSpacing(12)
+        settings_layout.setVerticalSpacing(12)
+
+        config_group = QGroupBox("Library Locations")
         config_layout = QFormLayout(config_group)
         config_layout.setSpacing(8)
         self.root_edit, root_row = self._path_row(self.on_browse_root)
@@ -761,11 +879,10 @@ class PhotoManagerWindow(QMainWindow):
         config_layout.addRow("Blur CSV", blur_csv_row)
 
         self.save_settings_btn = QPushButton("Save Settings")
-        self.save_settings_btn.setObjectName("secondaryAction")
+        self.save_settings_btn.setObjectName("primaryAction")
         config_layout.addRow("", self.save_settings_btn)
-        left_layout.addWidget(config_group)
 
-        sync_group = QGroupBox("Sync Parameters")
+        sync_group = QGroupBox("Sync Rules")
         sync_layout = QGridLayout(sync_group)
         sync_layout.setHorizontalSpacing(8)
         sync_layout.setVerticalSpacing(6)
@@ -821,7 +938,6 @@ class PhotoManagerWindow(QMainWindow):
         sync_layout.addWidget(self.autostart_windows_check, 13, 0, 1, 2)
         sync_layout.addWidget(self.start_minimized_check, 14, 0, 1, 2)
         sync_layout.addWidget(self.minimize_to_tray_check, 15, 0, 1, 2)
-        left_layout.addWidget(sync_group)
 
         service_group = QGroupBox("Windows Service")
         service_layout = QGridLayout(service_group)
@@ -854,7 +970,6 @@ class PhotoManagerWindow(QMainWindow):
             ):
                 btn.setEnabled(False)
             self.service_note_label.setText("Windows-only service controls.")
-        left_layout.addWidget(service_group)
 
         index_group = QGroupBox("Library Index")
         index_layout = QGridLayout(index_group)
@@ -869,7 +984,6 @@ class PhotoManagerWindow(QMainWindow):
         index_layout.addWidget(self.rebuild_index_btn, 0, 0)
         index_layout.addWidget(self.import_blur_index_btn, 0, 1)
         index_layout.addWidget(self.index_note_label, 1, 0, 1, 2)
-        left_layout.addWidget(index_group)
 
         blur_group = QGroupBox("Blur Tools")
         blur_layout = QGridLayout(blur_group)
@@ -901,28 +1015,29 @@ class PhotoManagerWindow(QMainWindow):
         blur_layout.addWidget(self.blur_review_btn, 5, 0, 1, 2)
         blur_layout.addWidget(self.blur_queue_btn, 6, 0, 1, 2)
         blur_layout.addWidget(self.blur_autodelete_btn, 7, 0, 1, 2)
-        left_layout.addWidget(blur_group)
-        left_layout.addStretch(1)
 
-        left_scroll = QScrollArea()
-        left_scroll.setObjectName("settingsScroll")
-        left_scroll.viewport().setObjectName("settingsViewport")
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        left_scroll.setMinimumWidth(340)
-        left_scroll.setWidget(left_panel)
+        settings_layout.addWidget(config_group, 0, 0)
+        settings_layout.addWidget(sync_group, 0, 1, 2, 1)
+        settings_layout.addWidget(index_group, 1, 0)
+        settings_layout.addWidget(service_group, 2, 0)
+        settings_layout.addWidget(blur_group, 2, 1)
+        settings_layout.setColumnStretch(0, 1)
+        settings_layout.setColumnStretch(1, 1)
+        scroll.setWidget(settings_panel)
+        page_layout.addWidget(scroll, stretch=1)
+        return self.settings_tab
 
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(8)
-
-        compare_group = QGroupBox("Compare Workspace")
-        compare_layout = QVBoxLayout(compare_group)
-        compare_layout.setContentsMargins(8, 8, 8, 8)
-        compare_layout.setSpacing(6)
-
+    def _build_compare_tab(self) -> QWidget:
+        self.compare_tab = QWidget()
+        layout = QVBoxLayout(self.compare_tab)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+        layout.addLayout(
+            self._page_header(
+                "Sync Plan",
+                "Preview what will be copied from the source folder into the library before starting a sync.",
+            )
+        )
         preview_split = QSplitter()
         preview_split.setChildrenCollapsible(False)
 
@@ -946,75 +1061,41 @@ class PhotoManagerWindow(QMainWindow):
         preview_split.addWidget(dst_group)
         preview_split.setSizes([530, 530])
 
-        compare_layout.addWidget(preview_split)
+        layout.addWidget(preview_split, stretch=1)
+        return self.compare_tab
 
-        self.workspace_tabs = QTabWidget()
-        self.workspace_tabs.addTab(compare_group, "Compare")
-        self.workspace_tabs.addTab(self._build_dashboard_tab(), "Dashboard")
-        self.workspace_tabs.addTab(self._build_gallery_tab(), "Gallery")
-        self.workspace_tabs.addTab(self._build_duplicates_tab(), "Duplicates")
-        self.workspace_tabs.addTab(self._build_delete_queue_tab(), "Delete Queue")
-        self.workspace_tabs.addTab(self._build_ai_tab(), "Light AI")
-        right_layout.addWidget(self.workspace_tabs, stretch=1)
-
-        workspace_splitter.addWidget(left_scroll)
-        workspace_splitter.addWidget(right_panel)
-        workspace_splitter.setSizes([360, 860])
-        main_layout.addWidget(workspace_splitter, stretch=1)
-
-        log_group = QGroupBox("Activity Log")
-        log_layout = QVBoxLayout(log_group)
+    def _build_diagnostics_tab(self) -> QWidget:
+        self.diagnostics_tab = QWidget()
+        layout = QVBoxLayout(self.diagnostics_tab)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+        layout.addLayout(
+            self._page_header(
+                "Diagnostics",
+                "Operational log for troubleshooting sync, indexing, cleanup, and background tasks.",
+            )
+        )
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
-        self.log_view.setMinimumHeight(90)
-        log_layout.addWidget(self.log_view)
-        main_layout.addWidget(log_group)
+        layout.addWidget(self.log_view, stretch=1)
+        return self.diagnostics_tab
 
-        self.save_settings_btn.clicked.connect(self.on_save_settings)
-        self.compare_btn.clicked.connect(self.on_compare_preview)
-        self.run_sync_btn.clicked.connect(self.on_run_sync_now)
-        self.start_background_btn.clicked.connect(self.on_start_background)
-        self.stop_background_btn.clicked.connect(self.on_stop_background)
-        self.edit_schedule_btn.clicked.connect(self.on_edit_schedule)
-        self.sync_hours_edit.textChanged.connect(lambda _text: self._refresh_schedule_summary())
-        self.install_service_btn.clicked.connect(lambda: self.on_service_command("install"))
-        self.start_service_btn.clicked.connect(lambda: self.on_service_command("start"))
-        self.stop_service_btn.clicked.connect(lambda: self.on_service_command("stop"))
-        self.uninstall_service_btn.clicked.connect(lambda: self.on_service_command("uninstall"))
-        self.rebuild_index_btn.clicked.connect(self.on_rebuild_index)
-        self.import_blur_index_btn.clicked.connect(self.on_import_blur_index)
-        self.blur_scan_btn.clicked.connect(self.on_blur_scan)
-        self.blur_review_btn.clicked.connect(self.on_blur_review)
-        self.blur_queue_btn.clicked.connect(self.on_queue_blur_candidates)
-        self.blur_autodelete_btn.clicked.connect(self.on_blur_auto_delete)
-        self.dashboard_refresh_btn.clicked.connect(self.on_dashboard_refresh)
-        self.dashboard_export_btn.clicked.connect(self.on_dashboard_export_sync_report)
-        self.about_btn.clicked.connect(self.on_about)
-        self.check_updates_btn.clicked.connect(self.on_check_updates)
-        self.start_menu_shortcut_btn.clicked.connect(self.on_create_start_menu_shortcut)
-        self.gallery_refresh_btn.clicked.connect(self.on_gallery_refresh)
-        self.gallery_search_edit.returnPressed.connect(self.on_gallery_refresh)
-        self.gallery_open_btn.clicked.connect(self.on_gallery_open_selected)
-        self.gallery_queue_btn.clicked.connect(self.on_gallery_queue_selected)
-        self.gallery_list.currentItemChanged.connect(self.on_gallery_selected)
-        self.duplicate_scan_btn.clicked.connect(self.on_duplicate_scan)
-        self.duplicate_cancel_scan_btn.clicked.connect(self.on_duplicate_cancel_scan)
-        self.duplicate_queue_selected_btn.clicked.connect(self.on_duplicate_queue_selected)
-        self.duplicate_queue_all_btn.clicked.connect(self.on_duplicate_queue_all)
-        self.duplicate_open_keep_btn.clicked.connect(lambda: self.on_duplicate_open("keep"))
-        self.duplicate_open_remove_btn.clicked.connect(lambda: self.on_duplicate_open("remove"))
-        self.duplicates_table.itemSelectionChanged.connect(self.on_duplicate_selected)
-        self.delete_refresh_btn.clicked.connect(self.on_delete_queue_refresh)
-        self.delete_status_combo.currentTextChanged.connect(lambda _text: self.on_delete_queue_refresh())
-        self.delete_cancel_btn.clicked.connect(self.on_delete_queue_cancel_selected)
-        self.delete_trash_selected_btn.clicked.connect(self.on_delete_queue_trash_selected)
-        self.delete_trash_all_btn.clicked.connect(self.on_delete_queue_trash_all)
-        self.delete_export_btn.clicked.connect(self.on_delete_queue_export)
-        self.delete_recycle_btn.clicked.connect(self.on_open_recycle_bin)
-        self.ai_run_btn.clicked.connect(self.on_light_ai_run)
-        self.ai_search_btn.clicked.connect(self.on_ai_search)
-        self.ai_search_edit.returnPressed.connect(self.on_ai_search)
-        self.ai_open_btn.clicked.connect(self.on_ai_open_selected)
+    def _page_header(self, title: str, subtitle: str) -> QHBoxLayout:
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        text = QWidget()
+        text_layout = QVBoxLayout(text)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(3)
+        title_label = QLabel(title)
+        title_label.setObjectName("pageTitle")
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setObjectName("pageSubtitle")
+        subtitle_label.setWordWrap(True)
+        text_layout.addWidget(title_label)
+        text_layout.addWidget(subtitle_label)
+        layout.addWidget(text, stretch=1)
+        return layout
 
     def _new_table(self, headers: List[str]) -> QTableWidget:
         table = QTableWidget(0, len(headers))
@@ -1026,29 +1107,88 @@ class PhotoManagerWindow(QMainWindow):
         table.verticalHeader().setVisible(False)
         return table
 
-    def _build_dashboard_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+    def _metric_card(self, title: str, value: str, caption: str) -> tuple[QWidget, QLabel, QLabel]:
+        card = QWidget()
+        card.setObjectName("metricCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(4)
+        title_label = QLabel(title)
+        title_label.setObjectName("metricTitle")
+        value_label = QLabel(value)
+        value_label.setObjectName("metricValue")
+        caption_label = QLabel(caption)
+        caption_label.setObjectName("metricCaption")
+        caption_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        layout.addWidget(caption_label)
+        return card, value_label, caption_label
 
-        toolbar = QHBoxLayout()
+    def _build_dashboard_tab(self) -> QWidget:
+        self.dashboard_tab = QWidget()
+        layout = QVBoxLayout(self.dashboard_tab)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        header = self._page_header(
+            "Library Dashboard",
+            "A quick read on sync readiness, cleanup pressure, indexing health, and recent activity.",
+        )
         self.dashboard_refresh_btn = QPushButton("Refresh")
         self.dashboard_refresh_btn.setObjectName("secondaryAction")
-        self.dashboard_export_btn = QPushButton("Export Sync Report")
+        self.dashboard_export_btn = QPushButton("Export Report")
         self.dashboard_export_btn.setObjectName("secondaryAction")
         self.about_btn = QPushButton("About")
         self.check_updates_btn = QPushButton("Check Updates")
         self.start_menu_shortcut_btn = QPushButton("Start Menu Shortcut")
         for btn in (self.about_btn, self.check_updates_btn, self.start_menu_shortcut_btn):
             btn.setObjectName("toolbarButton")
-        toolbar.addWidget(self.dashboard_refresh_btn)
-        toolbar.addWidget(self.dashboard_export_btn)
-        toolbar.addStretch(1)
-        toolbar.addWidget(self.about_btn)
-        toolbar.addWidget(self.check_updates_btn)
-        toolbar.addWidget(self.start_menu_shortcut_btn)
-        layout.addLayout(toolbar)
+        header.addWidget(self.dashboard_refresh_btn)
+        header.addWidget(self.dashboard_export_btn)
+        header.addWidget(self.about_btn)
+        header.addWidget(self.check_updates_btn)
+        header.addWidget(self.start_menu_shortcut_btn)
+        layout.addLayout(header)
+
+        metrics = QGridLayout()
+        metrics.setHorizontalSpacing(12)
+        metrics.setVerticalSpacing(12)
+        total_card, self.metric_total_files, _ = self._metric_card("Media Files", "-", "Indexed library items")
+        present_card, self.metric_present_files, _ = self._metric_card("Ready Files", "-", "Currently present in library")
+        ai_card, self.metric_ai_count, _ = self._metric_card("AI Metadata", "-", "Captions, tags, and OCR rows")
+        blur_card, self.metric_blur_count, _ = self._metric_card("Blur Review", "-", "Candidate photos to inspect")
+        queue_card, self.metric_queue_count, _ = self._metric_card("Cleanup Queue", "-", "Files waiting for review")
+        errors_card, self.metric_error_count, _ = self._metric_card("Sync Errors", "-", "Events needing attention")
+        for col, card in enumerate((total_card, present_card, ai_card, blur_card, queue_card, errors_card)):
+            metrics.addWidget(card, 0, col)
+            metrics.setColumnStretch(col, 1)
+        layout.addLayout(metrics)
+
+        next_card = QWidget()
+        next_card.setObjectName("nextActionCard")
+        next_layout = QHBoxLayout(next_card)
+        next_layout.setContentsMargins(16, 14, 16, 14)
+        next_layout.setSpacing(14)
+        next_text = QWidget()
+        next_text_layout = QVBoxLayout(next_text)
+        next_text_layout.setContentsMargins(0, 0, 0, 0)
+        next_text_layout.setSpacing(3)
+        self.next_action_title_label = QLabel("Next Best Action")
+        self.next_action_title_label.setObjectName("nextActionTitle")
+        self.next_action_body_label = QLabel("Configure folders, rebuild the library index, then review cleanup candidates.")
+        self.next_action_body_label.setObjectName("nextActionBody")
+        self.next_action_body_label.setWordWrap(True)
+        next_text_layout.addWidget(self.next_action_title_label)
+        next_text_layout.addWidget(self.next_action_body_label)
+        self.next_action_btn = QPushButton("Open Settings")
+        self.next_action_btn.setObjectName("primaryAction")
+        self.next_settings_btn = QPushButton("Settings")
+        self.next_settings_btn.setObjectName("toolbarButton")
+        next_layout.addWidget(next_text, stretch=1)
+        next_layout.addWidget(self.next_action_btn)
+        next_layout.addWidget(self.next_settings_btn)
+        layout.addWidget(next_card)
 
         self.dashboard_summary_label = QLabel("Index dashboard not loaded yet.")
         self.dashboard_summary_label.setObjectName("pathLabel")
@@ -1059,18 +1199,39 @@ class PhotoManagerWindow(QMainWindow):
         self.dashboard_year_table = self._new_table(["Year", "Files"])
         self.dashboard_folder_table = self._new_table(["Folder", "Files", "Size"])
         self.dashboard_events_table = self._new_table(["Time", "Mode", "Status", "Source", "Target"])
-        split.addWidget(self.dashboard_year_table)
-        split.addWidget(self.dashboard_folder_table)
-        split.addWidget(self.dashboard_events_table)
+        years_panel = self._table_panel("Years", self.dashboard_year_table)
+        folders_panel = self._table_panel("Top Folders", self.dashboard_folder_table)
+        events_panel = self._table_panel("Recent Sync Events", self.dashboard_events_table)
+        split.addWidget(years_panel)
+        split.addWidget(folders_panel)
+        split.addWidget(events_panel)
         split.setSizes([180, 330, 470])
         layout.addWidget(split, stretch=1)
-        return tab
+        return self.dashboard_tab
+
+    def _table_panel(self, title: str, table: QTableWidget) -> QWidget:
+        panel = QWidget()
+        panel.setObjectName("tablePanel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        title_label = QLabel(title)
+        title_label.setObjectName("sectionTitle")
+        layout.addWidget(title_label)
+        layout.addWidget(table, stretch=1)
+        return panel
 
     def _build_gallery_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+        layout.addLayout(
+            self._page_header(
+                "Gallery",
+                "Browse indexed media, inspect metadata, and queue cleanup decisions without leaving the app.",
+            )
+        )
 
         filters = QHBoxLayout()
         self.gallery_year_combo = QComboBox()
@@ -1086,7 +1247,7 @@ class PhotoManagerWindow(QMainWindow):
         self.gallery_refresh_btn.setObjectName("secondaryAction")
         self.gallery_open_btn = QPushButton("Open")
         self.gallery_queue_btn = QPushButton("Queue Delete")
-        self.gallery_queue_btn.setObjectName("dangerAction")
+        self.gallery_queue_btn.setObjectName("cautionAction")
         filters.addWidget(QLabel("Year"))
         filters.addWidget(self.gallery_year_combo)
         filters.addWidget(QLabel("Status"))
@@ -1113,12 +1274,13 @@ class PhotoManagerWindow(QMainWindow):
         self.gallery_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 
         preview_panel = QWidget()
+        preview_panel.setObjectName("inspectorPanel")
         preview_layout = QVBoxLayout(preview_panel)
         preview_layout.setContentsMargins(8, 0, 0, 0)
         self.gallery_preview_label = QLabel()
         self.gallery_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.gallery_preview_label.setMinimumSize(320, 320)
-        self.gallery_preview_label.setStyleSheet("background: #11141a; border: 1px solid #3a404b;")
+        self.gallery_preview_label.setStyleSheet("background: #f8fafc; border: 1px solid #d6dee9; border-radius: 8px;")
         self.gallery_details = QPlainTextEdit()
         self.gallery_details.setReadOnly(True)
         self.gallery_details.setMinimumHeight(140)
@@ -1134,8 +1296,14 @@ class PhotoManagerWindow(QMainWindow):
     def _build_duplicates_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+        layout.addLayout(
+            self._page_header(
+                "Duplicate Review",
+                "Compare exact matches side by side and queue the files you want to remove for safe cleanup.",
+            )
+        )
 
         toolbar = QHBoxLayout()
         self.duplicate_scan_btn = QPushButton("Scan Duplicates")
@@ -1145,7 +1313,7 @@ class PhotoManagerWindow(QMainWindow):
         self.duplicate_cancel_scan_btn.setEnabled(False)
         self.duplicate_queue_selected_btn = QPushButton("Queue Selected")
         self.duplicate_queue_all_btn = QPushButton("Queue All")
-        self.duplicate_queue_all_btn.setObjectName("dangerAction")
+        self.duplicate_queue_all_btn.setObjectName("cautionAction")
         self.duplicate_open_keep_btn = QPushButton("Open Keep")
         self.duplicate_open_remove_btn = QPushButton("Open Remove")
         toolbar.addWidget(self.duplicate_scan_btn)
@@ -1161,13 +1329,14 @@ class PhotoManagerWindow(QMainWindow):
         split.setChildrenCollapsible(False)
         self.duplicates_table = self._new_table(["Remove", "Keep", "Size", "Reason"])
         preview = QWidget()
+        preview.setObjectName("inspectorPanel")
         preview_layout = QGridLayout(preview)
         self.duplicate_keep_preview = QLabel("Keep")
         self.duplicate_remove_preview = QLabel("Remove")
         for label in (self.duplicate_keep_preview, self.duplicate_remove_preview):
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setMinimumSize(220, 220)
-            label.setStyleSheet("background: #11141a; border: 1px solid #3a404b;")
+            label.setStyleSheet("background: #f8fafc; border: 1px solid #d6dee9; border-radius: 8px;")
         self.duplicate_details = QPlainTextEdit()
         self.duplicate_details.setReadOnly(True)
         preview_layout.addWidget(QLabel("Keep"), 0, 0)
@@ -1184,8 +1353,14 @@ class PhotoManagerWindow(QMainWindow):
     def _build_delete_queue_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+        layout.addLayout(
+            self._page_header(
+                "Cleanup Queue",
+                "Review staged delete decisions before moving anything to the system recycle bin.",
+            )
+        )
 
         toolbar = QHBoxLayout()
         self.delete_status_combo = QComboBox()
@@ -1215,8 +1390,14 @@ class PhotoManagerWindow(QMainWindow):
     def _build_ai_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+        layout.addLayout(
+            self._page_header(
+                "AI Metadata",
+                "Run lightweight local tagging and search captions, tags, and OCR text stored in the index.",
+            )
+        )
 
         toolbar = QHBoxLayout()
         self.ai_limit_edit = QLineEdit("100")
@@ -1260,115 +1441,231 @@ class PhotoManagerWindow(QMainWindow):
     def _apply_theme(self) -> None:
         self.setStyleSheet(
             """
-            QMainWindow { background: #191c22; color: #d7dde8; }
-            QWidget { color: #d7dde8; }
-            QLabel { color: #cdd4e2; }
+            QMainWindow { background: #eef3f8; color: #17202b; }
+            QWidget#appRoot { background: #eef3f8; color: #17202b; }
+            QWidget { color: #17202b; font-size: 12px; }
+            QLabel { color: #263241; }
+            QWidget#commandBar {
+                background: #ffffff;
+                border: 1px solid #d7e0eb;
+                border-radius: 10px;
+            }
+            QLabel#appTitle {
+                color: #111827;
+                font-size: 22px;
+                font-weight: 900;
+            }
+            QLabel#appSubtitle {
+                color: #64748b;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QLabel#pathInline {
+                color: #475569;
+                font-size: 11px;
+            }
+            QLabel#statusPill {
+                color: #92400e;
+                background: #fef3c7;
+                border: 1px solid #fbbf24;
+                border-radius: 999px;
+                padding: 6px 11px;
+                font-weight: 800;
+            }
             QScrollArea#settingsScroll {
                 border: none;
-                background: #191c22;
+                background: transparent;
             }
             QWidget#settingsViewport, QWidget#settingsPanel {
-                background: #191c22;
+                background: transparent;
             }
             QScrollBar:vertical {
-                background: #15181e;
-                border-left: 1px solid #3a3f49;
+                background: #e2e8f0;
+                border: none;
                 width: 12px;
                 margin: 0;
             }
             QScrollBar::handle:vertical {
-                background: #526078;
-                border-radius: 5px;
+                background: #94a3b8;
+                border-radius: 6px;
                 min-height: 28px;
             }
-            QScrollBar::handle:vertical:hover { background: #65748e; }
+            QScrollBar::handle:vertical:hover { background: #64748b; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 border: none;
                 background: transparent;
                 height: 0;
             }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: #15181e;
+                background: #e2e8f0;
+            }
+            QLabel#pageTitle {
+                color: #111827;
+                font-size: 20px;
+                font-weight: 900;
+            }
+            QLabel#pageSubtitle {
+                color: #64748b;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QLabel#sectionTitle {
+                color: #334155;
+                font-size: 12px;
+                font-weight: 900;
             }
             QGroupBox {
-                border: 1px solid #3a3f49;
-                border-radius: 7px;
+                border: 1px solid #d7e0eb;
+                border-radius: 10px;
                 margin-top: 14px;
-                font-weight: 600;
-                background: #21252d;
-                color: #d7dde8;
+                font-weight: 800;
+                background: #ffffff;
+                color: #17202b;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
-                left: 8px;
-                padding: 0 6px;
-                color: #9ab6ff;
+                left: 12px;
+                padding: 0 7px;
+                color: #0f766e;
+                background: #ffffff;
             }
             QLineEdit, QComboBox, QListWidget, QTableWidget, QPlainTextEdit {
-                border: 1px solid #414854;
-                border-radius: 5px;
-                padding: 5px;
-                background: #15181e;
-                color: #d8deea;
-                selection-background-color: #1c4ca6;
+                border: 1px solid #ccd6e2;
+                border-radius: 7px;
+                padding: 6px;
+                background: #ffffff;
+                color: #17202b;
+                selection-background-color: #bfdbfe;
+                selection-color: #0f172a;
             }
-            QTabWidget::pane {
-                border: 1px solid #3a3f49;
-                background: #191c22;
+            QLineEdit:focus, QComboBox:focus, QListWidget:focus, QTableWidget:focus, QPlainTextEdit:focus {
+                border-color: #0f766e;
             }
-            QTabBar::tab {
-                background: #252a33;
-                color: #cdd4e2;
-                padding: 7px 12px;
-                border: 1px solid #3a3f49;
-                border-bottom: none;
+            QTabWidget#workspaceTabs::pane {
+                border: none;
+                background: transparent;
+                top: -1px;
             }
-            QTabBar::tab:selected { background: #313846; color: #f1f5ff; }
-            QTableWidget::item { padding: 4px; }
-            QListWidget { font-family: Consolas, 'Courier New', monospace; }
+            QTabWidget#workspaceTabs QTabBar::base {
+                border: none;
+                background: transparent;
+            }
+            QTabWidget#workspaceTabs QTabBar::tab {
+                background: #e8eef5;
+                color: #475569;
+                padding: 9px 14px;
+                border: 1px solid #d7e0eb;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                margin-right: 4px;
+                font-weight: 800;
+            }
+            QTabWidget#workspaceTabs QTabBar::tab:selected {
+                background: #ffffff;
+                color: #0f766e;
+                border-bottom-color: #ffffff;
+            }
+            QTabWidget#workspaceTabs QTabBar::tab:hover {
+                color: #0f172a;
+                background: #f8fafc;
+            }
+            QTableWidget {
+                gridline-color: #e2e8f0;
+                alternate-background-color: #f8fafc;
+            }
+            QHeaderView::section {
+                background: #f1f5f9;
+                color: #475569;
+                padding: 7px;
+                border: none;
+                border-right: 1px solid #e2e8f0;
+                font-weight: 900;
+            }
+            QTableWidget::item { padding: 6px; }
+            QListWidget { font-family: 'Segoe UI', sans-serif; }
             QLabel#pathLabel {
-                color: #9ea8b8;
-                padding: 2px 4px;
-                border: 1px solid #3a404b;
-                border-radius: 4px;
-                background: #171a20;
+                color: #475569;
+                padding: 5px 7px;
+                border: 1px solid #d7e0eb;
+                border-radius: 7px;
+                background: #f8fafc;
+            }
+            QWidget#metricCard, QWidget#nextActionCard, QWidget#tablePanel, QWidget#inspectorPanel {
+                background: #ffffff;
+                border: 1px solid #d7e0eb;
+                border-radius: 10px;
+            }
+            QLabel#metricTitle {
+                color: #64748b;
+                font-size: 11px;
+                font-weight: 900;
+            }
+            QLabel#metricValue {
+                color: #111827;
+                font-size: 26px;
+                font-weight: 900;
+            }
+            QLabel#metricCaption {
+                color: #64748b;
+                font-size: 11px;
+            }
+            QLabel#nextActionTitle {
+                color: #0f172a;
+                font-size: 15px;
+                font-weight: 900;
+            }
+            QLabel#nextActionBody {
+                color: #475569;
+                font-size: 12px;
             }
             QPushButton {
-                border: 1px solid #4b515e;
-                border-radius: 6px;
-                padding: 7px 12px;
-                background: #2d323c;
-                color: #e8edf8;
-                font-weight: 600;
+                border: 1px solid #cbd5e1;
+                border-radius: 7px;
+                padding: 7px 13px;
+                background: #ffffff;
+                color: #17202b;
+                font-weight: 800;
             }
-            QPushButton:hover { background: #383e4a; border-color: #61708a; }
-            QPushButton:pressed { background: #242a33; }
+            QPushButton:hover { background: #f8fafc; border-color: #94a3b8; }
+            QPushButton:pressed { background: #e2e8f0; }
             QPushButton#primaryAction {
-                background: #0f3f9c;
-                border-color: #2f6ad8;
-                color: #f0f6ff;
+                background: #0f766e;
+                border-color: #0f766e;
+                color: #ffffff;
                 font-size: 14px;
-                font-weight: 700;
+                font-weight: 900;
             }
-            QPushButton#primaryAction:hover { background: #1852be; }
+            QPushButton#primaryAction:hover { background: #115e59; border-color: #115e59; }
             QPushButton#secondaryAction {
-                background: #2a3448;
-                border-color: #4a5e84;
-                color: #dce8ff;
+                background: #e0f2fe;
+                border-color: #7dd3fc;
+                color: #075985;
+                font-weight: 900;
             }
-            QPushButton#secondaryAction:hover { background: #334464; }
+            QPushButton#secondaryAction:hover { background: #bae6fd; }
+            QPushButton#quietAction {
+                background: #f8fafc;
+                border-color: #cbd5e1;
+                color: #475569;
+            }
+            QPushButton#cautionAction {
+                background: #fff7ed;
+                border-color: #fdba74;
+                color: #9a3412;
+            }
+            QPushButton#cautionAction:hover { background: #ffedd5; }
             QPushButton#dangerAction {
-                background: #6d1f25;
-                border-color: #a33f49;
-                color: #ffe9ea;
+                background: #b91c1c;
+                border-color: #b91c1c;
+                color: #ffffff;
             }
-            QPushButton#dangerAction:hover { background: #8a2831; }
+            QPushButton#dangerAction:hover { background: #991b1b; }
             QPushButton#toolbarButton {
-                background: #2a3039;
-                border-color: #434a58;
+                background: #f8fafc;
+                border-color: #cbd5e1;
+                color: #334155;
             }
-            QCheckBox { padding: 2px; color: #cdd4e2; }
-            QLabel#statusLabel { color: #df6f78; font-weight: 700; }
+            QCheckBox { padding: 3px; color: #334155; }
             """
         )
 
@@ -1497,6 +1794,21 @@ class PhotoManagerWindow(QMainWindow):
         if sys.platform != "win32":
             self.autostart_windows_check.setEnabled(False)
             self.autostart_windows_check.setToolTip("Windows-only option.")
+        if hasattr(self, "root_summary_label"):
+            root_label = self._compact_path_label(str(cfg.root_dir))
+            source_label = self._compact_path_label(str(cfg.source_dir))
+            self.root_summary_label.setText(f"Library: {root_label} | Source: {source_label}")
+            self.root_summary_label.setToolTip(f"Library: {cfg.root_dir}\nSource: {cfg.source_dir}")
+
+    def _compact_path_label(self, raw: str) -> str:
+        text = str(raw).strip()
+        if not text:
+            return "not set"
+        try:
+            name = Path(text).expanduser().name
+        except Exception:
+            name = ""
+        return name or text
 
     def _build_config_from_widgets(self) -> AppConfig:
         return AppConfig(
@@ -1945,12 +2257,27 @@ class PhotoManagerWindow(QMainWindow):
     def on_dashboard_refresh(self) -> None:
         cfg = self._get_runtime_or_message()
         if cfg is None:
+            self.next_action_target = "settings"
+            self.next_action_title_label.setText("Finish Setup")
+            self.next_action_body_label.setText("Open Settings and choose valid root and source folders before syncing.")
+            self.next_action_btn.setText("Open Settings")
             return
         try:
             stats = dashboard_stats(cfg.root)
         except Exception as exc:
             self.dashboard_summary_label.setText(f"Dashboard unavailable: {exc}")
+            self.next_action_target = "settings"
+            self.next_action_title_label.setText("Index Unavailable")
+            self.next_action_body_label.setText("Open Settings, confirm the library folder, then rebuild the index.")
+            self.next_action_btn.setText("Open Settings")
             return
+
+        self.metric_total_files.setText(f"{int(stats['total']):,}")
+        self.metric_present_files.setText(f"{int(stats['present']):,}")
+        self.metric_ai_count.setText(f"{int(stats['ai_count']):,}")
+        self.metric_blur_count.setText(f"{int(stats['blur_pending']):,}")
+        self.metric_queue_count.setText(f"{int(stats['delete_queued']):,}")
+        self.metric_error_count.setText(f"{int(stats['sync_errors']):,}")
 
         self.dashboard_summary_label.setText(
             "Files: {total} | Present: {present} | AI metadata: {ai} | "
@@ -1963,6 +2290,32 @@ class PhotoManagerWindow(QMainWindow):
                 errors=stats["sync_errors"],
             )
         )
+
+        if int(stats["sync_errors"]) > 0:
+            self.next_action_target = "diagnostics"
+            self.next_action_title_label.setText("Check Sync Errors")
+            self.next_action_body_label.setText("Recent sync events include errors. Open Diagnostics and export a report if needed.")
+            self.next_action_btn.setText("Open Diagnostics")
+        elif int(stats["delete_queued"]) > 0:
+            self.next_action_target = "cleanup"
+            self.next_action_title_label.setText("Review Cleanup Queue")
+            self.next_action_body_label.setText("Files are staged for deletion. Review them before moving anything to the recycle bin.")
+            self.next_action_btn.setText("Open Cleanup")
+        elif int(stats["blur_pending"]) > 0:
+            self.next_action_target = "cleanup"
+            self.next_action_title_label.setText("Review Blur Candidates")
+            self.next_action_body_label.setText("Blur candidates are indexed. Queue or review them before cleanup.")
+            self.next_action_btn.setText("Review Cleanup")
+        elif int(stats["total"]) == 0:
+            self.next_action_target = "settings"
+            self.next_action_title_label.setText("Build The Library Index")
+            self.next_action_body_label.setText("No indexed media yet. Confirm folders in Settings, then rebuild the library index.")
+            self.next_action_btn.setText("Open Settings")
+        else:
+            self.next_action_target = "gallery"
+            self.next_action_title_label.setText("Explore Your Library")
+            self.next_action_body_label.setText("The index is ready. Browse media, inspect metadata, or search captions and tags.")
+            self.next_action_btn.setText("Open Gallery")
 
         self.dashboard_year_table.setRowCount(len(stats["years"]))
         for row, item in enumerate(stats["years"]):
@@ -1984,6 +2337,21 @@ class PhotoManagerWindow(QMainWindow):
             self._set_table_item(self.dashboard_events_table, row, 3, Path(str(item.get("src", ""))).name)
             self._set_table_item(self.dashboard_events_table, row, 4, Path(str(item.get("dst", ""))).name)
         self.log("dashboard: refreshed.")
+
+    def on_next_best_action(self) -> None:
+        targets = {
+            "settings": self.settings_tab,
+            "cleanup": self.workspace_tabs.widget(3),
+            "diagnostics": self.diagnostics_tab,
+            "gallery": self.workspace_tabs.widget(1),
+            "duplicates": self.workspace_tabs.widget(2),
+        }
+        target = targets.get(self.next_action_target, self.settings_tab)
+        self.workspace_tabs.setCurrentWidget(target)
+
+    def on_open_sync_plan(self) -> None:
+        self.workspace_tabs.setCurrentWidget(self.compare_tab)
+        self.on_compare_preview()
 
     def on_dashboard_export_sync_report(self) -> None:
         cfg = self._get_runtime_or_message()
@@ -2585,11 +2953,17 @@ class PhotoManagerWindow(QMainWindow):
 
     def _set_bg_running(self, running: bool) -> None:
         if running:
-            self.bg_status_label.setText("Background sync: running")
-            self.bg_status_label.setStyleSheet("color: #0f5d12; font-weight: 600;")
+            self.bg_status_label.setText("Watching active")
+            self.bg_status_label.setStyleSheet(
+                "color: #065f46; background: #d1fae5; border: 1px solid #6ee7b7; "
+                "border-radius: 999px; padding: 6px 11px; font-weight: 800;"
+            )
         else:
-            self.bg_status_label.setText("Background sync: stopped")
-            self.bg_status_label.setStyleSheet("color: #7a1111; font-weight: 600;")
+            self.bg_status_label.setText("Watching paused")
+            self.bg_status_label.setStyleSheet(
+                "color: #92400e; background: #fef3c7; border: 1px solid #fbbf24; "
+                "border-radius: 999px; padding: 6px 11px; font-weight: 800;"
+            )
 
     def on_blur_scan(self) -> None:
         cfg = self._get_runtime_or_message()
