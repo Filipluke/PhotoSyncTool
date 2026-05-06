@@ -47,6 +47,7 @@ from photo_manager_features import (
     dashboard_stats,
     enqueue_delete,
     export_delete_queue,
+    export_sync_report,
     gallery_filter_options,
     human_bytes,
     list_delete_queue,
@@ -987,6 +988,7 @@ class PhotoManagerWindow(QMainWindow):
         self.blur_queue_btn.clicked.connect(self.on_queue_blur_candidates)
         self.blur_autodelete_btn.clicked.connect(self.on_blur_auto_delete)
         self.dashboard_refresh_btn.clicked.connect(self.on_dashboard_refresh)
+        self.dashboard_export_btn.clicked.connect(self.on_dashboard_export_sync_report)
         self.about_btn.clicked.connect(self.on_about)
         self.check_updates_btn.clicked.connect(self.on_check_updates)
         self.start_menu_shortcut_btn.clicked.connect(self.on_create_start_menu_shortcut)
@@ -1033,12 +1035,15 @@ class PhotoManagerWindow(QMainWindow):
         toolbar = QHBoxLayout()
         self.dashboard_refresh_btn = QPushButton("Refresh")
         self.dashboard_refresh_btn.setObjectName("secondaryAction")
+        self.dashboard_export_btn = QPushButton("Export Sync Report")
+        self.dashboard_export_btn.setObjectName("secondaryAction")
         self.about_btn = QPushButton("About")
         self.check_updates_btn = QPushButton("Check Updates")
         self.start_menu_shortcut_btn = QPushButton("Start Menu Shortcut")
         for btn in (self.about_btn, self.check_updates_btn, self.start_menu_shortcut_btn):
             btn.setObjectName("toolbarButton")
         toolbar.addWidget(self.dashboard_refresh_btn)
+        toolbar.addWidget(self.dashboard_export_btn)
         toolbar.addStretch(1)
         toolbar.addWidget(self.about_btn)
         toolbar.addWidget(self.check_updates_btn)
@@ -1897,7 +1902,7 @@ class PhotoManagerWindow(QMainWindow):
 
             return metadata.version("photosync-tool")
         except Exception:
-            return "0.1.0"
+            return "0.1.2"
 
     def _set_preview_image(self, label: QLabel, path: Path) -> None:
         pixmap = QPixmap()
@@ -1979,6 +1984,22 @@ class PhotoManagerWindow(QMainWindow):
             self._set_table_item(self.dashboard_events_table, row, 3, Path(str(item.get("src", ""))).name)
             self._set_table_item(self.dashboard_events_table, row, 4, Path(str(item.get("dst", ""))).name)
         self.log("dashboard: refreshed.")
+
+    def on_dashboard_export_sync_report(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        default_path = cfg.root / "photo_manager_sync_report.csv"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export sync report",
+            str(default_path),
+            "CSV files (*.csv);;All files (*.*)",
+        )
+        if not path:
+            return
+        out = export_sync_report(cfg.root, Path(path))
+        self.log(f"sync-report: exported {out}")
 
     def on_about(self) -> None:
         QMessageBox.information(

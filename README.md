@@ -11,7 +11,7 @@ The project is currently alpha. The main workflow works, but distribution still 
 - Copy files with verification by fast fingerprint or full SHA256.
 - Optionally delete source files after successful synchronization.
 - Background sync mode powered by `watchdog`.
-- CSV synchronization log.
+- CSV synchronization log and dashboard sync report export.
 - Blur scanning with OpenCV.
 - Local SQLite metadata index for files, sync events, blur scores, and AI metadata.
 - Automatic background sync after app launch.
@@ -112,17 +112,19 @@ py -m pip install -e ".[dev]"
 py -m pytest
 ```
 
-The current tests cover date parsing, copy verification, safe destination naming, media filtering, and sync schedule logic.
+The current tests cover date parsing, copy verification, safe destination naming, media filtering, sync schedule logic, duplicate scanning, and sync report export.
+
+See `CONTRIBUTING.md` for the public-repository quality bar and release checks.
 
 ## Screenshots
 
-Screenshots are not committed yet. The capture plan and recommended filenames are documented in `docs/SCREENSHOTS.md`.
+Core screenshots are committed under `docs/screenshots/`. The capture plan and recommended filenames are documented in `docs/SCREENSHOTS.md`.
 
 ## GitHub Pages
 
-The static GitHub Pages site lives in `docs/`. The page is deployed by `.github/workflows/pages.yml` and expects screenshots in `docs/screenshots/`.
+The static GitHub Pages site lives in `docs/`. The page is deployed by `.github/workflows/pages.yml` and uses screenshots in `docs/screenshots/`.
 
-Start with:
+Currently linked screenshots:
 
 - `docs/screenshots/dashboard.png`
 - `docs/screenshots/gallery.png`
@@ -143,11 +145,26 @@ In the GUI, `Library Index -> Rebuild Index` scans the current root folder. `Imp
 
 Dashboard, Gallery, Duplicates, Delete Queue, and Light AI use this same index. After changing the root folder or importing a large existing library, rebuild the index first.
 
+The Dashboard can export indexed sync events to `photo_manager_sync_report.csv` for release testing, troubleshooting, or archival review.
+
 ## Gallery, Duplicates, And Delete Queue
 
 Gallery thumbnails are cached in `.photo_manager_cache/thumbnails` inside the selected root. The cache is ignored by the indexer and can be deleted safely; it will be rebuilt as needed.
 
 Duplicate Review does not delete files directly. It adds candidates to the Safe Delete Queue. From there, decisions can be cancelled, exported to CSV, or moved to the system recycle bin.
+
+## Privacy And Safety
+
+Photo Manager Pro is designed for local photo-library maintenance. The normal sync, index, duplicate, blur, gallery, and Light AI workflows operate on files on the current machine and store metadata in the selected library root or the per-user app configuration folder.
+
+The app does not upload photos to a cloud service. Update checks read public PyPI package metadata, and optional OCR only runs when the user installs and enables local OCR dependencies.
+
+Potentially destructive actions are staged through review-oriented flows:
+
+- batch source deletion only runs after successful synchronization and verification,
+- Duplicate Review queues candidates instead of deleting them directly,
+- Safe Delete Queue moves files to the system recycle bin by default,
+- hard delete options are explicit and should only be used with disposable test libraries or confirmed backups.
 
 ## Light AI
 
@@ -214,9 +231,6 @@ Torch is powerful, but heavy. For a desktop tool that should stay easy to run, O
 - Test and harden Windows Service install/start/stop on a clean Windows machine.
 - Test and polish the Inno Setup installer flow.
 - Add a signed release flow for `PhotoManagerPro.exe` and the installer.
-- Add automated GUI smoke tests.
-- Add a small fixture library for sync/index/gallery tests.
-- Add synchronization report export from the GUI.
 - Add pause controls and separate schedules for sync, blur, and AI work.
 - Add an optional hard-AI panel: ONNX/SigLIP or CLIP embeddings, backend, model, batch size, GPU/CPU, and embedding cache.
 

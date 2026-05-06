@@ -155,14 +155,14 @@ For later production-style releases, sign the installer rather than only the raw
 1. Update `version` in `pyproject.toml`.
 2. Update `CHANGELOG.md`.
 3. Commit and push to `main`.
-4. Create a GitHub Release for a matching tag, for example `v0.1.0`.
+4. Create a GitHub Release for a matching tag, for example `v0.1.2`.
 5. The `.github/workflows/publish.yml` workflow builds and uploads the package to PyPI.
 6. The `.github/workflows/windows-exe.yml` workflow builds `PhotoManagerPro.exe` and attaches it to the GitHub Release.
 
 ## GitHub Release Notes Template
 
 ```markdown
-## Photo Manager Pro v0.1.0
+## Photo Manager Pro v0.1.2
 
 Alpha release focused on local photo organization, sync, indexing, and review workflows.
 
@@ -171,11 +171,12 @@ Alpha release focused on local photo organization, sync, indexing, and review wo
 - PySide6 desktop GUI.
 - Year-based photo/video sorting with EXIF, filename, and timestamp fallback.
 - One-shot sync and background folder watching.
-- CSV sync log and local SQLite library index.
+- CSV sync log, dashboard sync report export, and local SQLite library index.
 - Dashboard, thumbnail gallery, duplicate review, and Safe Delete Queue.
 - Blur scanning with OpenCV.
 - Local Light AI tags/captions with optional OCR.
 - Windows executable build workflow.
+- CI coverage for package build, lint, tests, version consistency, and GUI smoke startup.
 
 ### Known Gaps
 

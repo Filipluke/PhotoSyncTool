@@ -148,7 +148,7 @@ def ask_text(prompt: str, default: Optional[str] = None) -> str:
             return val
         if default is not None:
             return default
-        print("Wartość nie może być pusta.")
+        print("Value cannot be empty.")
 
 
 def ask_float(prompt: str, default: float) -> float:
@@ -159,7 +159,7 @@ def ask_float(prompt: str, default: float) -> float:
         try:
             return float(val)
         except ValueError:
-            print("Podaj liczbę, np. 120 lub 95.5")
+            print("Enter a number, for example 120 or 95.5.")
 
 
 def ask_int(prompt: str, default: int) -> int:
@@ -170,7 +170,7 @@ def ask_int(prompt: str, default: int) -> int:
         try:
             return int(val)
         except ValueError:
-            print("Podaj liczbę całkowitą.")
+            print("Enter an integer.")
 
 
 def ask_yes_no(prompt: str, default: bool = False) -> bool:
@@ -179,11 +179,11 @@ def ask_yes_no(prompt: str, default: bool = False) -> bool:
         val = input(f"{prompt} ({opt}): ").strip().lower()
         if not val:
             return default
-        if val in {"y", "yes", "t", "tak"}:
+        if val in {"y", "yes"}:
             return True
-        if val in {"n", "no", "nie"}:
+        if val in {"n", "no"}:
             return False
-        print("Wpisz 'y' albo 'n'.")
+        print("Enter 'y' or 'n'.")
 
 
 def choose_from_list(items: List[Path], title: str) -> Optional[Path]:
@@ -192,20 +192,20 @@ def choose_from_list(items: List[Path], title: str) -> Optional[Path]:
     print(f"\n{title}")
     for i, p in enumerate(items, 1):
         print(f"  {i}. {p}")
-    print("  0. Anuluj")
+    print("  0. Cancel")
 
     while True:
-        val = input("Wybierz numer: ").strip()
+        val = input("Choose a number: ").strip()
         try:
             idx = int(val)
         except ValueError:
-            print("Podaj numer.")
+            print("Enter a number.")
             continue
         if idx == 0:
             return None
         if 1 <= idx <= len(items):
             return items[idx - 1]
-        print("Numer poza zakresem.")
+        print("Number out of range.")
 
 
 def find_csv_files(root: Path, limit: int = 30) -> List[Path]:
@@ -216,54 +216,54 @@ def find_csv_files(root: Path, limit: int = 30) -> List[Path]:
 
 
 def cli_menu() -> None:
-    print("Blur Tool (menu CLI)")
-    print("--------------------")
-    print(f"Wykryta platforma: {platform_label()} ({sys.platform})")
-    print("Masz dostępne akcje: scan, review, compact.")
+    print("Blur Tool CLI")
+    print("-------------")
+    print(f"Detected platform: {platform_label()} ({sys.platform})")
+    print("Available actions: scan, review, compact.")
 
     while True:
         print("\nMenu:")
         print("  1. Scan folder -> CSV")
         print("  2. Review CSV (GUI)")
-        print("  3. Compact CSV (tylko pending)")
-        print("  4. Wyjście")
+        print("  3. Compact CSV (pending only)")
+        print("  4. Exit")
 
-        choice = input("Wybierz opcję [1-4]: ").strip()
+        choice = input("Choose an option [1-4]: ").strip()
 
         if choice == "1":
-            root = Path(ask_text("Podaj folder ze zdjęciami (rekurencyjnie skanowany)")).expanduser()
+            root = Path(ask_text("Photo folder to scan recursively")).expanduser()
             if not root.exists() or not root.is_dir():
-                print(f"Niepoprawny folder: {root}")
+                print(f"Invalid folder: {root}")
                 continue
 
             default_out = root / "blur_candidates.csv"
-            out_csv = Path(ask_text("Podaj ścieżkę wyjściowego CSV", str(default_out))).expanduser()
-            threshold = ask_float("Próg blur (mniej = bardziej rozmyte)", DEFAULT_THRESHOLD)
-            include_all = ask_yes_no("Dodać wszystkie zdjęcia do CSV (nie tylko rozmyte)?", default=False)
-            top = ask_int("TOP N najbardziej rozmytych (0 = bez limitu)", 0)
+            out_csv = Path(ask_text("Output CSV path", str(default_out))).expanduser()
+            threshold = ask_float("Blur threshold (lower means blurrier)", DEFAULT_THRESHOLD)
+            include_all = ask_yes_no("Add all photos to CSV, not only blurry candidates?", default=False)
+            top = ask_int("Top N blurriest photos (0 = no limit)", 0)
 
             try:
                 cmd_scan(root=root, out_csv=out_csv, threshold=threshold, include_all=include_all, top=top)
             except Exception as e:
-                print(f"Błąd scan: {e}")
+                print(f"Scan error: {e}")
 
         elif choice == "2":
-            start_dir = Path(ask_text("Folder, w którym szukać plików CSV", str(Path.cwd()))).expanduser()
+            start_dir = Path(ask_text("Folder to search for CSV files", str(Path.cwd()))).expanduser()
             csv_candidates = find_csv_files(start_dir)
-            picked = choose_from_list(csv_candidates, "Znalezione CSV:") if csv_candidates else None
+            picked = choose_from_list(csv_candidates, "Found CSV files:") if csv_candidates else None
             if picked is None:
-                csv_input = ask_text("Podaj ścieżkę do CSV ręcznie")
+                csv_input = ask_text("Enter CSV path manually")
                 csv_path = Path(csv_input).expanduser()
             else:
                 csv_path = picked
 
             if not csv_path.exists():
-                print(f"CSV nie istnieje: {csv_path}")
+                print(f"CSV does not exist: {csv_path}")
                 continue
 
-            hard_delete = ask_yes_no("Usuwać na stałe zamiast przenosić do kosza?", default=False)
+            hard_delete = ask_yes_no("Permanently delete instead of moving to trash?", default=False)
             show_raw = ask_text(
-                "Statusy do pokazania (lista po przecinku)",
+                "Statuses to show (comma-separated)",
                 "pending",
             )
             show = tuple(s.strip().lower() for s in show_raw.split(",") if s.strip()) or (STATUS_PENDING,)
@@ -273,31 +273,31 @@ def cli_menu() -> None:
             try:
                 tk_review(csv_path=csv_path, hard_delete=hard_delete, show_statuses=show)
             except Exception as e:
-                print(f"Błąd review: {e}")
+                print(f"Review error: {e}")
 
         elif choice == "3":
-            start_dir = Path(ask_text("Folder, w którym szukać plików CSV", str(Path.cwd()))).expanduser()
+            start_dir = Path(ask_text("Folder to search for CSV files", str(Path.cwd()))).expanduser()
             csv_candidates = find_csv_files(start_dir)
-            picked = choose_from_list(csv_candidates, "Znalezione CSV:") if csv_candidates else None
+            picked = choose_from_list(csv_candidates, "Found CSV files:") if csv_candidates else None
             if picked is None:
-                csv_input = ask_text("Podaj ścieżkę do CSV ręcznie")
+                csv_input = ask_text("Enter CSV path manually")
                 csv_path = Path(csv_input).expanduser()
             else:
                 csv_path = picked
 
             if not csv_path.exists():
-                print(f"CSV nie istnieje: {csv_path}")
+                print(f"CSV does not exist: {csv_path}")
                 continue
             try:
                 cmd_compact(csv_path=csv_path)
             except Exception as e:
-                print(f"Błąd compact: {e}")
+                print(f"Compact error: {e}")
 
         elif choice == "4":
-            print("Koniec.")
+            print("Done.")
             return
         else:
-            print("Nieznana opcja. Wybierz 1-4.")
+            print("Unknown option. Choose 1-4.")
 
 
 def decisions_path_for(csv_path: Path) -> Path:
@@ -571,8 +571,8 @@ def cmd_compact(csv_path: Path) -> None:
 
 def tk_review(csv_path: Path, hard_delete: bool, show_statuses: Tuple[str, ...]) -> None:
     if not gui_available():
-        print("GUI niedostępne: brak sesji graficznej (DISPLAY/WAYLAND_DISPLAY).")
-        print("Uruchom narzędzie w środowisku desktopowym albo użyj opcji scan/compact.")
+        print("GUI unavailable: no graphical session detected (DISPLAY/WAYLAND_DISPLAY).")
+        print("Run the tool in a desktop session, or use the scan/compact commands.")
         return
 
     import tkinter as tk
@@ -637,7 +637,7 @@ def tk_review(csv_path: Path, hard_delete: bool, show_statuses: Tuple[str, ...])
         if idx < 0:
             idx = 0
         if idx >= len(queue):
-            messagebox.showinfo("Koniec", "Nie ma więcej zdjęć do przejrzenia.")
+            messagebox.showinfo("Done", "There are no more photos to review.")
             root.destroy()
             return
 
@@ -679,13 +679,13 @@ def tk_review(csv_path: Path, hard_delete: bool, show_statuses: Tuple[str, ...])
             return
         c = queue[idx]
         if send2trash is None:
-            messagebox.showerror("Brak modułu", f"Brak send2trash. Zainstaluj: {pip_install_hint('send2trash')}")
+            messagebox.showerror("Missing module", f"send2trash is not installed. Install it with: {pip_install_hint('send2trash')}")
             return
         try:
             send2trash(str(c.path))
             skip_current(STATUS_TRASHED)
         except Exception as e:
-            messagebox.showerror("Błąd", f"Nie udało się przenieść do kosza:\n{c.path}\n\n{e}")
+            messagebox.showerror("Error", f"Could not move to trash:\n{c.path}\n\n{e}")
 
     def delete(event=None):
         if idx >= len(queue):
@@ -697,12 +697,15 @@ def tk_review(csv_path: Path, hard_delete: bool, show_statuses: Tuple[str, ...])
                 skip_current(STATUS_DELETED)
             else:
                 if send2trash is None:
-                    messagebox.showerror("Brak modułu", f"Brak send2trash. Zainstaluj: {pip_install_hint('send2trash')}")
+                    messagebox.showerror(
+                        "Missing module",
+                        f"send2trash is not installed. Install it with: {pip_install_hint('send2trash')}",
+                    )
                     return
                 send2trash(str(c.path))
                 skip_current(STATUS_TRASHED)
         except Exception as e:
-            messagebox.showerror("Błąd", f"Nie udało się usunąć:\n{c.path}\n\n{e}")
+            messagebox.showerror("Error", f"Could not delete:\n{c.path}\n\n{e}")
 
     def open_folder(event=None):
         if idx >= len(queue):
@@ -712,10 +715,10 @@ def tk_review(csv_path: Path, hard_delete: bool, show_statuses: Tuple[str, ...])
     def on_resize(event=None):
         root.after(80, load_current_image)
 
-    btn_keep = tk.Button(frm, text="Zostaw (→ / Enter)", width=20, command=keep)
-    btn_delete = tk.Button(frm, text=("Usuń na stałe" if hard_delete else "Usuń"), width=20, command=delete)
-    btn_trash = tk.Button(frm, text="Kosz (K)", width=20, command=trash)
-    btn_open = tk.Button(frm, text="Otwórz folder (O)", width=20, command=open_folder)
+    btn_keep = tk.Button(frm, text="Keep (Right / Enter)", width=20, command=keep)
+    btn_delete = tk.Button(frm, text=("Delete Permanently" if hard_delete else "Delete"), width=20, command=delete)
+    btn_trash = tk.Button(frm, text="Trash (K)", width=20, command=trash)
+    btn_open = tk.Button(frm, text="Open Folder (O)", width=20, command=open_folder)
 
     btn_keep.grid(row=0, column=0, padx=8)
     btn_delete.grid(row=0, column=1, padx=8)

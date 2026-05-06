@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "photosync-tool"
-version = "0.1.1"
+version = "0.1.2"
 description = "Local desktop tool for organizing, syncing, indexing, and reviewing photos."
 readme = "README.md"
 license = "MIT"
@@ -41,6 +41,7 @@ dependencies = [
 dev = [
     "build",
     "pytest",
+    "ruff",
     "twine",
 ]
 ai = [
@@ -77,3 +78,14 @@ packages = ["photosync_tool_assets"]
 
 [tool.setuptools.package-data]
 photosync_tool_assets = ["*.png", "*.ico"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

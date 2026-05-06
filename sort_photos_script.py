@@ -22,7 +22,7 @@ def try_get_year_from_filename(path: Path) -> Optional[int]:
       20210924_132556.jpg
       IMG_20210924_132556.jpg
       VID-20210924-WA0001.mp4
-      Zrzut ekranu_20221204_225309.png
+      Screenshot_20221204_225309.png
     """
     name = path.name
     patterns = (
@@ -88,8 +88,8 @@ def detect_year(path: Path, date_source: str = "exif") -> int:
     """
     date_source:
       - exif: try EXIF DateTimeOriginal, fallback to filename date, then mtime
-      - mtime: use modified time (Windows "Zmodyfikowany")
-      - ctime: use ctime (Windows often "Utworzony", on Unix metadata change time)
+      - mtime: use modified time
+      - ctime: use creation time on Windows, metadata change time on Unix
     """
     st = path.stat()
 

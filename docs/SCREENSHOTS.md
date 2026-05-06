@@ -16,7 +16,7 @@ The GitHub Pages starter site currently links directly to:
 - `docs/screenshots/gallery.png`
 - `docs/screenshots/duplicates.png`
 
-Add those three first so the landing page stops showing browser image placeholders.
+Keep those three current so the landing page reflects the latest public workflow.
 
 Suggested capture flow:
 

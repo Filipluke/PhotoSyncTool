@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import pytest
+
+pytest.importorskip("PySide6")
+
+from PySide6.QtWidgets import QApplication
+
+import photo_manager_qt
+from photo_manager_qt import PhotoManagerWindow
+
+
+def _app() -> QApplication:
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    return app
+
+
+def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    root = tmp_path / "library"
+    root.mkdir()
+    config_path = tmp_path / "config" / "photo_manager_config.json"
+
+    monkeypatch.setattr(photo_manager_qt, "default_photo_root", lambda: root)
+    monkeypatch.setattr(photo_manager_qt, "default_config_path", lambda: config_path)
+
+    app = _app()
+    window = PhotoManagerWindow()
+    app.processEvents()
+
+    try:
+        tab_names = [window.workspace_tabs.tabText(index) for index in range(window.workspace_tabs.count())]
+
+        assert tab_names == ["Compare", "Dashboard", "Gallery", "Duplicates", "Delete Queue", "Light AI"]
+        assert window.windowTitle() == "Photo Manager Pro"
+        assert window.dashboard_export_btn.text() == "Export Sync Report"
+        assert window.root_edit.text() == str(root)
+        assert "Source folder does not exist." in [
+            window.source_preview_list.item(index).text() for index in range(window.source_preview_list.count())
+        ]
+    finally:
+        window._allow_real_close = True
+        window.close()
+        app.processEvents()

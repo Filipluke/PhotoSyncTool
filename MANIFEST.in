@@ -1,5 +1,6 @@
 include README.md
 include CHANGELOG.md
+include CONTRIBUTING.md
 include LICENSE
 include RELEASE.md
 recursive-include photosync_tool_assets *.png *.ico
@@ -7,9 +8,11 @@ recursive-include photosync_tool_assets *.png *.ico
 exclude photo_manager_config.json
 exclude photo_manager_index.sqlite3*
 exclude photo_manager_sync_log.csv
+exclude photo_manager_sync_report.csv
 exclude photo_manager_service.log
 exclude blur_candidates*.csv
 exclude *.decisions.csv
+exclude *.decisions.jsonl
 
 global-exclude __pycache__/*
 global-exclude *.py[cod]

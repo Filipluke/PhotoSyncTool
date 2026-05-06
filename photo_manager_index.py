@@ -25,6 +25,7 @@ INTERNAL_FILE_NAMES = {
     f"{INDEX_FILE_NAME}-shm",
     "photo_manager_config.json",
     "photo_manager_sync_log.csv",
+    "photo_manager_sync_report.csv",
     "photo_manager_service.log",
 }
 INTERNAL_DIR_NAMES = {".photo_manager_cache", "__pycache__", ".git", ".github"}
@@ -484,6 +485,8 @@ def iter_library_files(root: Path, include_nonmedia: bool = False) -> Iterable[P
         if name.startswith("blur_candidates") and name.endswith(".csv"):
             continue
         if name.endswith(".decisions.csv"):
+            continue
+        if name.endswith(".decisions.jsonl"):
             continue
         if is_media_file(path, include_nonmedia=include_nonmedia):
             yield path

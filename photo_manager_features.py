@@ -486,6 +486,39 @@ def export_delete_queue(root: Path, out_path: Path) -> Path:
     return out_path
 
 
+def export_sync_report(root: Path, out_path: Path, *, limit: int = 100000) -> Path:
+    with closing(_connect_features(root)) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, ts, mode, status, year, src, dst, flags, details_json
+            FROM sync_events
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (max(1, int(limit)),),
+        ).fetchall()
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["id", "ts", "mode", "status", "year", "src", "dst", "flags", "details_json"])
+        for row in rows:
+            writer.writerow(
+                [
+                    int(row["id"]),
+                    str(row["ts"]),
+                    str(row["mode"]),
+                    str(row["status"]),
+                    "" if row["year"] is None else int(row["year"]),
+                    str(row["src"] or ""),
+                    str(row["dst"] or ""),
+                    str(row["flags"] or ""),
+                    str(row["details_json"] or ""),
+                ]
+            )
+    return out_path
+
+
 def _iter_duplicate_files(
     root: Path,
     *,

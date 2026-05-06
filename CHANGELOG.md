@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.1.2 - 2026-05-06
+
+- Added dashboard sync report export for indexed synchronization events.
+- Hardened CI to install the project from scratch on Python 3.10 and 3.13 before running tests and package checks.
+- Kept Windows installer and source-run GUI fallback versions aligned with the package version.
+- Standardized remaining blur-tool prompts and comments to English for public repository polish.
+- Added GUI smoke coverage for the main PySide6 workspace.
+- Added a reusable test fixture library for sample photo library scenarios.
+- Added release version consistency coverage.
+- Added lightweight Ruff linting to CI and PyPI publish checks.
+- Added public contribution and privacy/safety documentation.
+
 ## 0.1.1 - 2026-05-03
 
 - Added MIT license metadata and `LICENSE`.
