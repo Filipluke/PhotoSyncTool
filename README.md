@@ -164,7 +164,7 @@ py -m pre_commit run --all-files
 
 ## Screenshots
 
-Core screenshots are committed under `docs/screenshots/`. The capture plan and recommended filenames are documented in `docs/SCREENSHOTS.md`.
+Core screenshots are committed under `docs/screenshots/`. The capture plan, recommended filenames, and sanitized demo capture script are documented in `docs/SCREENSHOTS.md`.
 
 ## GitHub Pages
 

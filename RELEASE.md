@@ -202,13 +202,14 @@ Alpha release focused on local photo organization, sync, indexing, and review wo
 
 ### Added
 
-- PySide6 desktop GUI.
+- Dark futuristic PySide6 desktop GUI.
 - Year-based photo/video sorting with EXIF, filename, and timestamp fallback.
 - One-shot sync and background folder watching.
 - CSV sync log, dashboard sync report export, and local SQLite library index.
-- Dashboard, thumbnail gallery, duplicate review, and Safe Delete Queue.
+- Dashboard-first workspace, thumbnail gallery, duplicate review, Settings, Diagnostics, and Safe Delete Queue.
 - Blur scanning with OpenCV.
 - Local Light AI tags/captions with optional OCR.
+- Sanitized GitHub Pages screenshot capture automation.
 - Windows executable build workflow.
 - Linux systemd user-service commands for headless background sync.
 - CI coverage for package build, lint, tests, version consistency, and GUI smoke startup.

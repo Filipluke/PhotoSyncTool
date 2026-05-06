@@ -4,6 +4,10 @@
 
 ## 0.1.3 - 2026-05-10
 
+- Refreshed the desktop GUI with a dark futuristic product surface, command bar, dashboard-first workspace, dedicated Settings and Diagnostics tabs, summary metric cards, and safer cleanup action hierarchy.
+- Updated the GitHub Pages visual system to match the dark desktop UI.
+- Added repeatable sanitized screenshot capture automation for the GitHub Pages dashboard, gallery, and duplicate review images.
+- Replaced the public GitHub Pages screenshots with current desktop views captured from a disposable demo library.
 - Added Linux systemd user-service support for headless background synchronization.
 - Updated GUI service controls to describe Windows Services and Linux systemd service modes.
 - Expanded documentation and the GitHub Pages site for Windows/Linux usage.
@@ -11,7 +15,6 @@
 
 ## 0.1.2 - 2026-05-10
 
-- Refreshed the desktop GUI with a product-style command bar, dashboard-first workspace, dedicated Settings and Diagnostics tabs, summary metric cards, and safer cleanup action hierarchy.
 - Added dashboard sync report export for indexed synchronization events.
 - Hardened CI to install the project from scratch on Python 3.10 and 3.13 before running tests and package checks.
 - Kept Windows installer and source-run GUI fallback versions aligned with the package version.
