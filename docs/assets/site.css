@@ -1,13 +1,14 @@
 :root {
-  color-scheme: light;
-  --ink: #17202b;
-  --muted: #5b6675;
-  --line: #d9e0e8;
-  --surface: #ffffff;
-  --soft: #eef4f7;
-  --accent: #0f766e;
-  --accent-dark: #134e4a;
-  --night: #111827;
+  color-scheme: dark;
+  --ink: #e5edf7;
+  --muted: #93a4b8;
+  --line: #2a3140;
+  --surface: #10131a;
+  --soft: #0b0f16;
+  --accent: #14b8a6;
+  --accent-dark: #5eead4;
+  --night: #07090d;
+  --warning: #f59e0b;
 }
 
 * {
@@ -24,7 +25,7 @@ html {
 
 body {
   margin: 0;
-  background: #f8fafc;
+  background: #07090d;
   color: var(--ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.5;
@@ -38,8 +39,8 @@ a {
   min-height: 78vh;
   padding: 24px clamp(18px, 4vw, 56px) 64px;
   background:
-    linear-gradient(90deg, rgba(5, 12, 22, 0.9) 0%, rgba(5, 12, 22, 0.72) 42%, rgba(5, 12, 22, 0.18) 100%),
-    linear-gradient(0deg, rgba(5, 12, 22, 0.08), rgba(5, 12, 22, 0.08)),
+    linear-gradient(90deg, rgba(7, 9, 13, 0.95) 0%, rgba(7, 9, 13, 0.78) 42%, rgba(7, 9, 13, 0.2) 100%),
+    linear-gradient(0deg, rgba(7, 9, 13, 0.12), rgba(7, 9, 13, 0.12)),
     url("../screenshots/gallery.png");
   background-size: cover;
   background-position: center;
@@ -66,7 +67,7 @@ a {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 16px;
-  color: rgba(248, 250, 252, 0.82);
+  color: rgba(229, 237, 247, 0.82);
   font-size: 0.95rem;
 }
 
@@ -122,7 +123,7 @@ h3 {
 .lead {
   max-width: 660px;
   margin: 24px 0 0;
-  color: rgba(248, 250, 252, 0.86);
+  color: rgba(229, 237, 247, 0.86);
   font-size: clamp(1.05rem, 1.7vw, 1.24rem);
 }
 
@@ -148,11 +149,11 @@ h3 {
 .button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: white;
+  color: #041312;
 }
 
 .button.secondary {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(16, 19, 26, 0.9);
   color: var(--ink);
 }
 
@@ -194,6 +195,7 @@ h3 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
+  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.22);
 }
 
 .feature-grid p,
@@ -211,10 +213,10 @@ h3 {
 .screenshot-grid figure {
   margin: 0;
   overflow: hidden;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
-  box-shadow: 0 20px 54px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 24px 68px rgba(0, 0, 0, 0.36);
 }
 
 .screenshot-grid img,
@@ -232,10 +234,8 @@ h3 {
 .image-placeholder {
   place-content: center;
   padding: 24px;
-  background:
-    linear-gradient(135deg, rgba(15, 118, 110, 0.16), transparent),
-    #e8eef4;
-  color: #334155;
+  background: #0b0f16;
+  color: #c4d2e3;
   font-weight: 850;
   text-align: center;
   text-decoration: none;
@@ -261,7 +261,7 @@ figcaption {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--night);
-  color: #e5e7eb;
+  color: #e5edf7;
 }
 
 code {
@@ -274,7 +274,7 @@ code {
   .hero {
     min-height: 72vh;
     background:
-      linear-gradient(90deg, rgba(5, 12, 22, 0.9), rgba(5, 12, 22, 0.54)),
+      linear-gradient(90deg, rgba(7, 9, 13, 0.95), rgba(7, 9, 13, 0.62)),
       url("../screenshots/gallery.png");
     background-size: cover;
     background-position: center;

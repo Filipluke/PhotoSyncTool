@@ -10,7 +10,7 @@ Recommended files:
 - `docs/screenshots/duplicates.png` - Duplicate Review tab with sample duplicate candidates.
 - `docs/screenshots/delete-queue.png` - Safe Delete Queue with queued items.
 
-The GitHub Pages starter site currently links directly to:
+The GitHub Pages site currently links directly to:
 
 - `docs/screenshots/dashboard.png`
 - `docs/screenshots/gallery.png`
@@ -18,9 +18,17 @@ The GitHub Pages starter site currently links directly to:
 
 Keep those three current so the landing page reflects the latest public workflow.
 
+Automated capture:
+
+```bash
+QT_QPA_PLATFORM=offscreen python scripts/capture_demo_screenshots.py
+```
+
+The script creates a disposable demo library, captures sanitized desktop views, and writes the three linked PNG files under `docs/screenshots/`.
+
 Suggested capture flow:
 
-1. Create a small demo photo root outside the repository.
+1. Create a small demo photo root outside the repository, or run `scripts/capture_demo_screenshots.py`.
 2. Add a few copied sample images and videos with safe, non-private content.
 3. Run the app, point it at the demo root, and rebuild the index.
 4. Capture the app window at about `1440x900`.
