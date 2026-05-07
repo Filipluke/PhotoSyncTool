@@ -211,12 +211,23 @@ h3 {
 }
 
 .screenshot-grid figure {
+  position: relative;
   margin: 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   box-shadow: 0 24px 68px rgba(0, 0, 0, 0.36);
+}
+
+.screenshot-grid figure::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid rgba(94, 234, 212, 0);
+  border-radius: inherit;
+  transition: border-color 180ms ease;
 }
 
 .screenshot-grid img,
@@ -229,6 +240,33 @@ h3 {
 .screenshot-grid img {
   object-fit: contain;
   background: #10151d;
+  transform: scale(1);
+  transform-origin: center;
+  transition:
+    filter 220ms ease,
+    transform 220ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .screenshot-grid figure:hover {
+    cursor: zoom-in;
+  }
+
+  .screenshot-grid figure:hover::after {
+    border-color: rgba(94, 234, 212, 0.48);
+  }
+
+  .screenshot-grid figure:hover img {
+    filter: saturate(1.06) contrast(1.04);
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screenshot-grid figure::after,
+  .screenshot-grid img {
+    transition: none;
+  }
 }
 
 .image-placeholder {
