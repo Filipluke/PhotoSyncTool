@@ -1,0 +1,81 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='760' height='475' viewBox='0 0 760 475' role='img' aria-labelledby='title desc'>
+  <title id='title'>Photo Manager Pro dashboard screenshot</title>
+  <desc id='desc'>Dark desktop dashboard with library stats, cleanup queue, and recent sync tables.</desc>
+  <defs>
+    <linearGradient id='bg' x1='0' y1='0' x2='1' y2='1'>
+      <stop offset='0' stop-color='#060914'/>
+      <stop offset='0.55' stop-color='#0d121c'/>
+      <stop offset='1' stop-color='#111827'/>
+    </linearGradient>
+    <linearGradient id='panel' x1='0' y1='0' x2='1' y2='1'>
+      <stop offset='0' stop-color='#121a27'/>
+      <stop offset='1' stop-color='#0b111b'/>
+    </linearGradient>
+    <style>
+      .base{fill:url(#bg)}.chrome{fill:#0f1724;stroke:#243244}.panel{fill:url(#panel);stroke:#26374d}.sub{fill:#101827;stroke:#28384d}.ink{fill:#e6eef8;font-family:'Segoe UI',Arial,sans-serif}.muted{fill:#8fa3ba;font-family:'Segoe UI',Arial,sans-serif}.tiny{font-size:9px}.small{font-size:10px}.body{font-size:11px}.label{font-size:10px;font-weight:700}.h1{font-size:20px;font-weight:800}.h2{font-size:13px;font-weight:800}.btn{fill:#162235;stroke:#32445d}.btn2{fill:#13b8a6}.accent{fill:#5eead4}.warn{fill:#fbbf24}.bad{fill:#fb7185}.ok{fill:#34d399}.line{stroke:#27364b;stroke-width:1}.tab{fill:#0b111b;stroke:#26374d}.tabActive{fill:#132338;stroke:#14b8a6}.mono{font-family:'Cascadia Code','SFMono-Regular',Consolas,monospace}
+    </style>
+  </defs>
+  <rect class='base' width='760' height='475'/>
+  <rect x='18' y='16' width='724' height='443' rx='14' class='chrome'/>
+  <circle cx='39' cy='36' r='5' fill='#fb7185'/><circle cx='57' cy='36' r='5' fill='#fbbf24'/><circle cx='75' cy='36' r='5' fill='#34d399'/>
+  <text x='96' y='40' class='ink h2'>Photo Manager Pro</text>
+  <text x='217' y='40' class='muted small'>Local photo sync, review, cleanup, and metadata search</text>
+  <rect x='603' y='26' width='109' height='22' rx='6' class='btn'/><text x='618' y='41' class='muted tiny'>Watchdog paused</text>
+
+  <rect x='36' y='62' width='124' height='26' rx='6' class='btn'/><text x='52' y='79' class='ink label'>Preview Sync Plan</text>
+  <rect x='169' y='62' width='88' height='26' rx='6' class='btn2'/><text x='191' y='79' fill='#031312' font-family='Segoe UI,Arial,sans-serif' font-size='10' font-weight='800'>Sync Now</text>
+  <rect x='266' y='62' width='104' height='26' rx='6' class='btn'/><text x='286' y='79' class='ink label'>Start Watching</text>
+  <rect x='379' y='62' width='102' height='26' rx='6' class='btn'/><text x='401' y='79' class='ink label'>Stop Watching</text>
+  <rect x='490' y='62' width='84' height='26' rx='6' class='btn'/><text x='513' y='79' class='ink label'>Settings</text>
+  <rect x='583' y='62' width='96' height='26' rx='6' class='btn'/><text x='606' y='79' class='ink label'>Diagnostics</text>
+
+  <g transform='translate(36 104)'>
+    <rect width='88' height='28' rx='6' class='tabActive'/><text x='17' y='18' class='ink label'>Dashboard</text>
+    <rect x='94' width='76' height='28' rx='6' class='tab'/><text x='114' y='18' class='muted label'>Gallery</text>
+    <rect x='176' width='88' height='28' rx='6' class='tab'/><text x='192' y='18' class='muted label'>Duplicates</text>
+    <rect x='270' width='80' height='28' rx='6' class='tab'/><text x='291' y='18' class='muted label'>Cleanup</text>
+    <rect x='356' width='96' height='28' rx='6' class='tab'/><text x='375' y='18' class='muted label'>AI Metadata</text>
+    <rect x='458' width='86' height='28' rx='6' class='tab'/><text x='477' y='18' class='muted label'>Sync Plan</text>
+    <rect x='550' width='78' height='28' rx='6' class='tab'/><text x='570' y='18' class='muted label'>Settings</text>
+    <rect x='634' width='92' height='28' rx='6' class='tab'/><text x='651' y='18' class='muted label'>Diagnostics</text>
+  </g>
+
+  <text x='36' y='162' class='ink h1'>Library Dashboard</text>
+  <text x='36' y='181' class='muted body'>Scan state, sync readiness, and review queues for the active photo library.</text>
+
+  <g transform='translate(36 198)'>
+    <rect width='108' height='58' rx='8' class='panel'/><text x='14' y='22' class='muted tiny'>Media Files</text><text x='14' y='45' class='ink h1'>5</text>
+    <rect x='118' width='108' height='58' rx='8' class='panel'/><text x='132' y='22' class='muted tiny'>Ready Files</text><text x='132' y='45' class='ink h1'>5</text>
+    <rect x='236' width='108' height='58' rx='8' class='panel'/><text x='250' y='22' class='muted tiny'>AI Metadata</text><text x='250' y='45' class='accent h1'>2</text>
+    <rect x='354' width='108' height='58' rx='8' class='panel'/><text x='368' y='22' class='muted tiny'>Blur Review</text><text x='368' y='45' class='warn h1'>1</text>
+    <rect x='472' width='108' height='58' rx='8' class='panel'/><text x='486' y='22' class='muted tiny'>Cleanup Queue</text><text x='486' y='45' class='bad h1'>1</text>
+    <rect x='590' width='98' height='58' rx='8' class='panel'/><text x='604' y='22' class='muted tiny'>Sync Errors</text><text x='604' y='45' class='ok h1'>0</text>
+  </g>
+
+  <g transform='translate(36 268)'>
+    <rect width='688' height='42' rx='8' fill='#132235' stroke='#334a64'/>
+    <text x='14' y='18' class='ink h2'>Review Cleanup Queue</text>
+    <text x='14' y='32' class='muted tiny'>1 candidate needs confirmation before files are moved to the recycle bin.</text>
+    <rect x='536' y='9' width='132' height='24' rx='6' class='btn2'/><text x='558' y='25' fill='#031312' font-family='Segoe UI,Arial,sans-serif' font-size='10' font-weight='800'>Open Cleanup</text>
+  </g>
+
+  <g transform='translate(36 326)'>
+    <rect width='214' height='102' rx='8' class='sub'/><text x='14' y='22' class='ink h2'>Years</text>
+    <line x1='14' y1='32' x2='198' y2='32' class='line'/>
+    <text x='14' y='52' class='muted tiny mono'>2024</text><rect x='72' y='42' width='96' height='12' rx='6' fill='#14b8a6'/><text x='180' y='52' class='ink tiny'>3</text>
+    <text x='14' y='74' class='muted tiny mono'>2023</text><rect x='72' y='64' width='64' height='12' rx='6' fill='#38bdf8'/><text x='180' y='74' class='ink tiny'>2</text>
+    <text x='14' y='96' class='muted tiny mono'>Unknown</text><rect x='72' y='86' width='30' height='12' rx='6' fill='#64748b'/><text x='180' y='96' class='ink tiny'>0</text>
+
+    <rect x='236' width='214' height='102' rx='8' class='sub'/><text x='250' y='22' class='ink h2'>Top Folders</text>
+    <line x1='250' y1='32' x2='434' y2='32' class='line'/>
+    <text x='250' y='52' class='muted tiny mono'>D:/Photos/Inbox</text><text x='402' y='52' class='ink tiny'>3</text>
+    <text x='250' y='74' class='muted tiny mono'>D:/Camera/2024</text><text x='402' y='74' class='ink tiny'>2</text>
+    <text x='250' y='96' class='muted tiny mono'>D:/Phone Export</text><text x='402' y='96' class='ink tiny'>1</text>
+
+    <rect x='472' width='216' height='102' rx='8' class='sub'/><text x='486' y='22' class='ink h2'>Recent Sync Events</text>
+    <line x1='486' y1='32' x2='672' y2='32' class='line'/>
+    <text x='486' y='52' class='ok tiny'>copied</text><text x='543' y='52' class='muted tiny mono'>IMG_4021.jpg</text><text x='642' y='52' class='muted tiny'>09:42</text>
+    <text x='486' y='74' class='accent tiny'>indexed</text><text x='543' y='74' class='muted tiny mono'>DSC_1180.nef</text><text x='642' y='74' class='muted tiny'>09:39</text>
+    <text x='486' y='96' class='warn tiny'>queued</text><text x='543' y='96' class='muted tiny mono'>blurred.png</text><text x='642' y='96' class='muted tiny'>09:33</text>
+  </g>
+</svg>

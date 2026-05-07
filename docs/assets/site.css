@@ -41,7 +41,7 @@ a {
   background:
     linear-gradient(90deg, rgba(7, 9, 13, 0.95) 0%, rgba(7, 9, 13, 0.78) 42%, rgba(7, 9, 13, 0.2) 100%),
     linear-gradient(0deg, rgba(7, 9, 13, 0.12), rgba(7, 9, 13, 0.12)),
-    url("../screenshots/gallery.png");
+    url("../screenshots/gallery.svg");
   background-size: cover;
   background-position: center;
   color: #f8fafc;
@@ -275,7 +275,7 @@ code {
     min-height: 72vh;
     background:
       linear-gradient(90deg, rgba(7, 9, 13, 0.95), rgba(7, 9, 13, 0.62)),
-      url("../screenshots/gallery.png");
+      url("../screenshots/gallery.svg");
     background-size: cover;
     background-position: center;
   }

@@ -1,0 +1,67 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='760' height='475' viewBox='0 0 760 475' role='img' aria-labelledby='title desc'>
+  <title id='title'>Photo Manager Pro gallery screenshot</title>
+  <desc id='desc'>Dark desktop gallery with photo grid, metadata table, preview pane, and search toolbar.</desc>
+  <defs>
+    <linearGradient id='bg' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#060914'/><stop offset='1' stop-color='#111827'/></linearGradient>
+    <linearGradient id='sunset' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#f97316'/><stop offset='0.46' stop-color='#facc15'/><stop offset='1' stop-color='#0f766e'/></linearGradient>
+    <linearGradient id='lake' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#38bdf8'/><stop offset='0.55' stop-color='#0f766e'/><stop offset='1' stop-color='#064e3b'/></linearGradient>
+    <linearGradient id='night' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#6366f1'/><stop offset='1' stop-color='#0f172a'/></linearGradient>
+    <linearGradient id='warm' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#fb7185'/><stop offset='1' stop-color='#7c2d12'/></linearGradient>
+    <style>
+      .base{fill:url(#bg)}.chrome{fill:#0f1724;stroke:#243244}.panel{fill:#101827;stroke:#28384d}.sub{fill:#0c1320;stroke:#26374d}.ink{fill:#e6eef8;font-family:'Segoe UI',Arial,sans-serif}.muted{fill:#8fa3ba;font-family:'Segoe UI',Arial,sans-serif}.tiny{font-size:9px}.small{font-size:10px}.body{font-size:11px}.label{font-size:10px;font-weight:700}.h1{font-size:20px;font-weight:800}.h2{font-size:13px;font-weight:800}.btn{fill:#162235;stroke:#32445d}.accent{fill:#5eead4}.line{stroke:#27364b;stroke-width:1}.tab{fill:#0b111b;stroke:#26374d}.tabActive{fill:#132338;stroke:#14b8a6}.mono{font-family:'Cascadia Code','SFMono-Regular',Consolas,monospace}
+    </style>
+  </defs>
+  <rect class='base' width='760' height='475'/>
+  <rect x='18' y='16' width='724' height='443' rx='14' class='chrome'/>
+  <circle cx='39' cy='36' r='5' fill='#fb7185'/><circle cx='57' cy='36' r='5' fill='#fbbf24'/><circle cx='75' cy='36' r='5' fill='#34d399'/>
+  <text x='96' y='40' class='ink h2'>Photo Manager Pro</text><text x='217' y='40' class='muted small'>Gallery, preview, metadata, and local indexing</text>
+
+  <g transform='translate(36 60)'>
+    <rect width='88' height='28' rx='6' class='tab'/><text x='17' y='18' class='muted label'>Dashboard</text>
+    <rect x='94' width='76' height='28' rx='6' class='tabActive'/><text x='114' y='18' class='ink label'>Gallery</text>
+    <rect x='176' width='88' height='28' rx='6' class='tab'/><text x='192' y='18' class='muted label'>Duplicates</text>
+    <rect x='270' width='80' height='28' rx='6' class='tab'/><text x='291' y='18' class='muted label'>Cleanup</text>
+    <rect x='356' width='96' height='28' rx='6' class='tab'/><text x='375' y='18' class='muted label'>AI Metadata</text>
+    <rect x='458' width='86' height='28' rx='6' class='tab'/><text x='477' y='18' class='muted label'>Sync Plan</text>
+    <rect x='550' width='78' height='28' rx='6' class='tab'/><text x='570' y='18' class='muted label'>Settings</text>
+    <rect x='634' width='92' height='28' rx='6' class='tab'/><text x='651' y='18' class='muted label'>Diagnostics</text>
+  </g>
+
+  <text x='36' y='121' class='ink h1'>Gallery</text>
+  <rect x='130' y='101' width='288' height='28' rx='7' class='sub'/><text x='146' y='119' class='muted body'>Search filenames, dates, tags, captions</text>
+  <rect x='430' y='101' width='82' height='28' rx='7' class='btn'/><text x='455' y='119' class='ink label'>Filter</text>
+  <rect x='522' y='101' width='90' height='28' rx='7' fill='#13b8a6'/><text x='545' y='119' fill='#031312' font-family='Segoe UI,Arial,sans-serif' font-size='10' font-weight='800'>Index</text>
+  <rect x='622' y='101' width='102' height='28' rx='7' class='btn'/><text x='644' y='119' class='ink label'>Open Folder</text>
+
+  <g transform='translate(36 148)'>
+    <rect width='168' height='280' rx='8' class='panel'/>
+    <text x='14' y='22' class='ink h2'>Metadata</text><text x='14' y='42' class='muted tiny'>Selected file details</text>
+    <line x1='14' y1='54' x2='154' y2='54' class='line'/>
+    <text x='14' y='78' class='muted tiny'>Filename</text><text x='72' y='78' class='ink tiny mono'>IMG_4021.jpg</text>
+    <text x='14' y='102' class='muted tiny'>Date</text><text x='72' y='102' class='ink tiny mono'>2024-08-19</text>
+    <text x='14' y='126' class='muted tiny'>Size</text><text x='72' y='126' class='ink tiny mono'>4.8 MB</text>
+    <text x='14' y='150' class='muted tiny'>Tags</text><text x='72' y='150' class='accent tiny'>travel, night</text>
+    <text x='14' y='174' class='muted tiny'>Caption</text><text x='14' y='195' class='ink tiny'>Old town street after rain</text>
+    <rect x='14' y='218' width='136' height='28' rx='6' class='btn'/><text x='43' y='236' class='ink label'>Edit Metadata</text>
+    <rect x='14' y='252' width='136' height='16' rx='8' fill='#0b111b'/><rect x='14' y='252' width='98' height='16' rx='8' fill='#14b8a6'/><text x='58' y='264' fill='#031312' font-family='Segoe UI,Arial,sans-serif' font-size='9' font-weight='800'>indexed</text>
+
+    <rect x='188' width='322' height='280' rx='8' class='panel'/>
+    <text x='202' y='22' class='ink h2'>Photo Grid</text><text x='430' y='22' class='muted tiny'>5 media files</text>
+    <g transform='translate(202 42)'>
+      <rect width='88' height='80' rx='7' fill='#0b111b' stroke='#14b8a6'/><rect x='8' y='8' width='72' height='46' rx='5' fill='url(#sunset)'/><path d='M8 54 L36 28 L53 44 L64 33 L80 54 Z' fill='#052e2b' opacity='.78'/><text x='8' y='72' class='ink tiny mono'>IMG_4021.jpg</text>
+      <rect x='100' width='88' height='80' rx='7' fill='#0b111b' stroke='#27364b'/><rect x='108' y='8' width='72' height='46' rx='5' fill='url(#lake)'/><circle cx='128' cy='24' r='8' fill='#fde68a'/><text x='108' y='72' class='muted tiny mono'>DSC_1180.nef</text>
+      <rect x='200' width='88' height='80' rx='7' fill='#0b111b' stroke='#27364b'/><rect x='208' y='8' width='72' height='46' rx='5' fill='url(#night)'/><path d='M208 54 L232 34 L244 45 L259 28 L280 54 Z' fill='#020617' opacity='.7'/><text x='208' y='72' class='muted tiny mono'>PXL_0902.png</text>
+      <rect y='94' width='88' height='80' rx='7' fill='#0b111b' stroke='#27364b'/><rect x='8' y='102' width='72' height='46' rx='5' fill='url(#warm)'/><circle cx='58' cy='122' r='13' fill='#fed7aa' opacity='.7'/><text x='8' y='166' class='muted tiny mono'>holiday.mov</text>
+      <rect x='100' y='94' width='88' height='80' rx='7' fill='#0b111b' stroke='#27364b'/><rect x='108' y='102' width='72' height='46' rx='5' fill='#1f2937'/><path d='M113 143 L132 118 L148 138 L158 128 L178 148 L113 148 Z' fill='#14b8a6' opacity='.72'/><text x='108' y='166' class='muted tiny mono'>scan_77.tif</text>
+      <rect x='200' y='94' width='88' height='80' rx='7' fill='#0b111b' stroke='#27364b'/><rect x='208' y='102' width='72' height='46' rx='5' fill='#111827'/><circle cx='244' cy='125' r='18' fill='#475569'/><text x='208' y='166' class='muted tiny mono'>portrait.heic</text>
+      <rect y='188' width='288' height='32' rx='7' fill='#101827' stroke='#27364b'/><text x='12' y='209' class='muted body'>Sort: newest first</text><text x='188' y='209' class='accent body'>Preview ready</text>
+    </g>
+
+    <rect x='530' width='158' height='280' rx='8' class='panel'/>
+    <text x='544' y='22' class='ink h2'>Preview</text><text x='544' y='42' class='muted tiny'>IMG_4021.jpg</text>
+    <rect x='544' y='58' width='130' height='88' rx='8' fill='url(#sunset)'/><path d='M544 146 L590 92 L612 122 L633 101 L674 146 Z' fill='#052e2b' opacity='.72'/><circle cx='646' cy='82' r='13' fill='#fde68a'/>
+    <text x='544' y='170' class='muted tiny'>AI caption</text><text x='544' y='190' class='ink tiny'>Wet cobblestone street</text><text x='544' y='205' class='ink tiny'>with warm evening lights.</text>
+    <rect x='544' y='226' width='56' height='22' rx='6' fill='#132338' stroke='#14b8a6'/><text x='561' y='241' class='accent tiny'>Keep</text>
+    <rect x='608' y='226' width='66' height='22' rx='6' class='btn'/><text x='627' y='241' class='ink tiny'>Queue</text>
+  </g>
+</svg>
