@@ -15,6 +15,7 @@
 - Added lightweight Ruff linting to CI and PyPI publish checks.
 - Added public contribution and privacy/safety documentation.
 - Added contributor guidelines, public roadmap, and GitHub issue templates.
+- Installed Qt runtime libraries in the PyPI publish workflow before GUI smoke tests.
 - Expanded README project metadata, layout, and development workflow sections.
 - Narrowed PyPI metadata checks to Python distributions so local executable artifacts do not break `twine check`.
 - Added ignore patterns for local notes, editor settings, and scratch files.
