@@ -943,7 +943,7 @@ class PhotoManagerWindow(QMainWindow):
         sync_layout.addWidget(self.start_minimized_check, 14, 0, 1, 2)
         sync_layout.addWidget(self.minimize_to_tray_check, 15, 0, 1, 2)
 
-        service_group = QGroupBox("Windows Service")
+        service_group = QGroupBox("Background Service")
         service_layout = QGridLayout(service_group)
         service_layout.setHorizontalSpacing(8)
         service_layout.setVerticalSpacing(6)
@@ -965,7 +965,11 @@ class PhotoManagerWindow(QMainWindow):
         self.service_note_label = QLabel("Runs sync without the GUI.")
         self.service_note_label.setObjectName("pathLabel")
         service_layout.addWidget(self.service_note_label, 2, 0, 1, 2)
-        if sys.platform != "win32":
+        if sys.platform == "win32":
+            self.service_note_label.setText("Uses Windows Service commands.")
+        elif sys.platform.startswith("linux"):
+            self.service_note_label.setText("Uses a systemd user service.")
+        else:
             for btn in (
                 self.install_service_btn,
                 self.start_service_btn,
@@ -973,7 +977,7 @@ class PhotoManagerWindow(QMainWindow):
                 self.uninstall_service_btn,
             ):
                 btn.setEnabled(False)
-            self.service_note_label.setText("Windows-only service controls.")
+            self.service_note_label.setText("Use foreground background sync on this platform.")
 
         index_group = QGroupBox("Library Index")
         index_layout = QGridLayout(index_group)
@@ -2218,7 +2222,7 @@ class PhotoManagerWindow(QMainWindow):
 
             return metadata.version("photosync-tool")
         except Exception:
-            return "0.1.2"
+            return "0.1.3"
 
     def _set_preview_image(self, label: QLabel, path: Path) -> None:
         pixmap = QPixmap()
@@ -2903,8 +2907,12 @@ class PhotoManagerWindow(QMainWindow):
         self._set_bg_running(False)
 
     def on_service_command(self, command: str) -> None:
-        if sys.platform != "win32":
-            QMessageBox.information(self, "Windows only", "Service controls are available only on Windows.")
+        if sys.platform != "win32" and not sys.platform.startswith("linux"):
+            QMessageBox.information(
+                self,
+                "Service unavailable",
+                "Service controls are available on Windows Services and Linux systemd.",
+            )
             return
         if not self._persist_settings(show_message=False):
             return

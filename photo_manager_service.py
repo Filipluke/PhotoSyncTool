@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -26,6 +29,7 @@ SERVICE_NAME = "PhotoManagerProService"
 SERVICE_DISPLAY_NAME = "Photo Manager Pro Background Service"
 SERVICE_DESCRIPTION = "Runs Photo Manager Pro synchronization in the background without the GUI."
 SERVICE_LOG_NAME = "photo_manager_service.log"
+SYSTEMD_SERVICE_NAME = "photo-manager-pro.service"
 
 try:
     import servicemanager  # type: ignore
@@ -100,6 +104,101 @@ def run_once(config_path: Optional[Path] = None, echo: bool = True) -> None:
     logger("One-shot sync finished.")
 
 
+def systemd_user_unit_dir() -> Path:
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "systemd" / "user"
+
+
+def systemd_unit_path() -> Path:
+    return systemd_user_unit_dir() / SYSTEMD_SERVICE_NAME
+
+
+def systemd_quote(value: object) -> str:
+    text = str(value)
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def build_systemd_unit(config_path: Optional[Path] = None) -> str:
+    resolved_config = config_path or default_config_path()
+    script = Path(__file__).resolve()
+    exec_args = [
+        sys.executable,
+        str(script),
+        "run",
+        "--config",
+        str(resolved_config),
+    ]
+    exec_start = " ".join(systemd_quote(part) for part in exec_args)
+    working_directory = systemd_quote(script_dir())
+    log_path = user_config_dir() / SERVICE_LOG_NAME
+
+    return f"""[Unit]
+Description={SERVICE_DISPLAY_NAME}
+Documentation=https://github.com/Filipluke/PhotoSyncTool
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory={working_directory}
+ExecStart={exec_start}
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
+
+# Logs are also written by the app to:
+# {log_path}
+"""
+
+
+def run_systemctl(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    if shutil.which("systemctl") is None:
+        raise SystemExit("systemctl is required for Linux systemd user service commands.")
+    return subprocess.run(["systemctl", "--user", *args], text=True, check=check)
+
+
+def handle_systemd_service_command(command: str, config_path: Optional[Path] = None) -> None:
+    if not sys.platform.startswith("linux"):
+        raise SystemExit("systemd service commands are supported on Linux only.")
+
+    unit_path = systemd_unit_path()
+
+    if command == "install":
+        unit_path.parent.mkdir(parents=True, exist_ok=True)
+        unit_path.write_text(build_systemd_unit(config_path), encoding="utf-8")
+        run_systemctl("daemon-reload")
+        run_systemctl("enable", SYSTEMD_SERVICE_NAME)
+        print(f"Installed user systemd service: {unit_path}")
+        print(f"Start it with: systemctl --user start {SYSTEMD_SERVICE_NAME}")
+        print("For start-after-login without an active session, run: loginctl enable-linger $USER")
+        return
+
+    if command == "uninstall":
+        run_systemctl("stop", SYSTEMD_SERVICE_NAME, check=False)
+        run_systemctl("disable", SYSTEMD_SERVICE_NAME, check=False)
+        if unit_path.exists():
+            unit_path.unlink()
+        run_systemctl("daemon-reload")
+        print(f"Removed user systemd service: {SYSTEMD_SERVICE_NAME}")
+        return
+
+    if command == "start":
+        run_systemctl("start", SYSTEMD_SERVICE_NAME)
+        return
+    if command == "stop":
+        run_systemctl("stop", SYSTEMD_SERVICE_NAME)
+        return
+    if command == "restart":
+        run_systemctl("restart", SYSTEMD_SERVICE_NAME)
+        return
+    if command == "status":
+        result = run_systemctl("status", SYSTEMD_SERVICE_NAME, check=False)
+        raise SystemExit(result.returncode)
+
+    raise SystemExit(f"Unsupported Linux service command: {command}")
+
+
 if win32serviceutil is not None:
 
     class PhotoManagerWindowsService(win32serviceutil.ServiceFramework):  # type: ignore[misc]
@@ -146,14 +245,30 @@ def handle_windows_service_command(command: str) -> None:
     win32serviceutil.HandleCommandLine(PhotoManagerWindowsService)
 
 
+def handle_platform_service_command(command: str, config_path: Optional[Path] = None) -> None:
+    if sys.platform == "win32":
+        handle_windows_service_command(command)
+        return
+    if sys.platform.startswith("linux"):
+        handle_systemd_service_command(command, config_path=config_path)
+        return
+    raise SystemExit(
+        "Platform service commands are supported on Windows Services and Linux systemd user services. "
+        "Use `photo-manager-service run` for foreground background sync on this platform."
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Photo Manager Pro headless/background service.")
     parser.add_argument(
         "command",
         nargs="?",
         default="run",
-        choices=["run", "once", "install", "uninstall", "start", "stop", "restart", "debug"],
-        help="run=foreground watcher, once=batch sync, install/start/stop=Windows Service commands",
+        choices=["run", "once", "install", "uninstall", "start", "stop", "restart", "status", "debug"],
+        help=(
+            "run=foreground watcher, once=batch sync, install/start/stop=Windows Service "
+            "or Linux systemd user-service commands"
+        ),
     )
     parser.add_argument("--config", type=str, default="", help="Optional path to photo_manager_config.json")
     args = parser.parse_args()
@@ -167,7 +282,7 @@ def main() -> None:
         run_once(config_path=config_path, echo=True)
         return
 
-    handle_windows_service_command(args.command)
+    handle_platform_service_command(args.command, config_path=config_path)
 
 
 if __name__ == "__main__":

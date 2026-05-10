@@ -5,7 +5,7 @@
 [![GitHub Pages](https://github.com/Filipluke/PhotoSyncTool/actions/workflows/pages.yml/badge.svg)](https://github.com/Filipluke/PhotoSyncTool/actions/workflows/pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Photo Manager Pro is a local desktop tool for organizing photos and videos. It has a PySide6 GUI, one-shot sync, background folder watching, blur detection, a local SQLite index, duplicate review, and safe cleanup tools.
+Photo Manager Pro is a local-first desktop tool for organizing photos and videos on Windows and Linux. It has a PySide6 GUI, one-shot sync, background folder watching, blur detection, a local SQLite index, duplicate review, and safe cleanup tools.
 
 The project is currently alpha. The main workflow works, but distribution still needs clean-machine testing, more service-mode hardening, and better automated GUI checks.
 
@@ -22,7 +22,7 @@ The project is currently alpha. The main workflow works, but distribution still 
 - Automatic background sync after app launch.
 - Optional app startup on Windows login.
 - Single-instance startup guard, so reopening the app focuses the existing process instead of creating another tray icon.
-- Headless runner and Windows Service commands.
+- Headless runner, Windows Service commands, and Linux systemd user-service commands.
 - Dashboard with library totals, year counts, top folders, sync errors, and recent events.
 - Thumbnail gallery with cached thumbnails, filters, preview, and text/tag search.
 - Duplicate review tab that scans by content hash, supports scan cancellation, and queues removals for review.
@@ -52,7 +52,7 @@ photo_manager_core.py       Core sync, date detection, copy, and file helpers
 photo_manager_features.py   Gallery, delete queue, duplicate review, and AI helpers
 photo_manager_index.py      SQLite library index and related commands
 photo_manager_qt.py         Main PySide6 desktop interface
-photo_manager_service.py    Headless runner and Windows Service entry point
+photo_manager_service.py    Headless runner and platform service entry point
 blur_tool.py                Blur detection workflow
 sort_photos_script.py       Legacy/simple CLI sorter
 tests/                      Pytest coverage for core workflows
@@ -70,10 +70,17 @@ On Windows, the default config path is:
 %APPDATA%\PhotoManagerPro\photo_manager_config.json
 ```
 
+On Linux, the default config path is:
+
+```text
+~/.config/PhotoManagerPro/photo_manager_config.json
+```
+
 The headless service uses the same default config path, and writes its log to:
 
 ```text
 %APPDATA%\PhotoManagerPro\photo_manager_service.log
+~/.config/PhotoManagerPro/photo_manager_service.log
 ```
 
 If an old `photo_manager_config.json` exists next to the source files, the GUI can still read it as a legacy fallback. New saves go to the AppData location.
@@ -90,6 +97,17 @@ pyinstaller --noconfirm --onefile --windowed --name PhotoManagerPro --icon photo
 ```
 
 The executable is written to `dist/PhotoManagerPro.exe`. `build/` and `dist/` are build outputs and should not be committed.
+
+## Linux Install
+
+Linux currently runs from the Python package or from source:
+
+```bash
+python3 -m pip install --user photosync-tool
+photo-manager-pro
+```
+
+The GUI uses PySide6, so some distributions may need Qt runtime libraries installed through the system package manager. Headless sync can run without opening the GUI after the config file exists.
 
 ## Release Build Script
 
@@ -162,6 +180,11 @@ Currently linked screenshots:
 
 The public roadmap lives in `ROADMAP.md`.
 
+Related design notes:
+
+- `docs/SYSTEMD.md` for Linux background sync with systemd.
+- `docs/GOOGLE_DRIVE_SYNC.md` for the planned Google Drive backend.
+
 ## Library Index
 
 The app keeps a local SQLite index named `photo_manager_index.sqlite3` inside the selected photo root. The index is local and disposable: it can be rebuilt from the library, sync logs, and blur CSVs.
@@ -173,7 +196,7 @@ The index stores:
 - blur scores imported from `blur_tool.py`,
 - captions, tags, OCR text, and future AI embedding data.
 
-In the GUI, `Library Index -> Rebuild Index` scans the current root folder. `Import Blur CSV` imports existing blur scan results. Batch sync, background sync, Windows service, blur scan, and blur auto-delete all update the index.
+In the GUI, `Library Index -> Rebuild Index` scans the current root folder. `Import Blur CSV` imports existing blur scan results. Batch sync, background sync, Windows Service, Linux systemd service, blur scan, and blur auto-delete all update the index.
 
 Dashboard, Gallery, Duplicates, Delete Queue, and Light AI use this same index. After changing the root folder or importing a large existing library, rebuild the index first.
 
@@ -189,7 +212,7 @@ Duplicate Review does not delete files directly. It adds candidates to the Safe 
 
 Photo Manager Pro is designed for local photo-library maintenance. The normal sync, index, duplicate, blur, gallery, and Light AI workflows operate on files on the current machine and store metadata in the selected library root or the per-user app configuration folder.
 
-The app does not upload photos to a cloud service. Update checks read public PyPI package metadata, and optional OCR only runs when the user installs and enables local OCR dependencies.
+The default app does not upload photos to a cloud service. Update checks read public PyPI package metadata, and optional OCR only runs when the user installs and enables local OCR dependencies. Google Drive synchronization is a planned optional backend and should require explicit OAuth setup, user-selected scopes, and clear dry-run/reporting behavior before uploads happen.
 
 Potentially destructive actions are staged through review-oriented flows:
 
@@ -217,17 +240,35 @@ The GUI has two startup options:
 - `Autostart background on launch` starts folder watching after the app launches.
 - `Open on Windows startup` adds an entry to `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, so the app starts when the current user logs in.
 
-There is also a headless entry point in `photo_manager_service.py`. It can run a one-shot sync, run as a foreground watcher, or expose Windows Service commands through `pywin32`:
+There is also a headless entry point in `photo_manager_service.py`. It can run a one-shot sync, run as a foreground watcher, or expose platform service commands:
 
 ```powershell
 photo-manager-service once
 photo-manager-service run
 photo-manager-service install
 photo-manager-service start
+photo-manager-service status
 photo-manager-service stop
+photo-manager-service uninstall
 ```
 
-Service mode is implemented, but still needs real-world install/start/stop testing on a clean machine and better setup around logs, permissions, and uninstall behavior.
+On Windows, `install/start/stop/uninstall` use Windows Services through `pywin32`. On Linux, those same commands manage a systemd user service named `photo-manager-pro.service`.
+
+Linux systemd flow:
+
+```bash
+python3 -m pip install --user photosync-tool
+photo-manager-pro
+photo-manager-service once
+photo-manager-service install
+photo-manager-service start
+photo-manager-service status
+journalctl --user -u photo-manager-pro.service -f
+```
+
+Use `systemctl --user start|stop|restart|status photo-manager-pro.service` when you want to manage the service directly. If the service should keep running after logout on a desktop/server machine, enable lingering with `loginctl enable-linger "$USER"`.
+
+Service mode is implemented, but still needs real-world install/start/stop testing on clean Windows and Linux machines and better setup around logs, permissions, and uninstall behavior.
 
 ## Schedule
 
@@ -261,9 +302,11 @@ Torch is powerful, but heavy. For a desktop tool that should stay easy to run, O
 ## Still Open
 
 - Test and harden Windows Service install/start/stop on a clean Windows machine.
+- Test and harden Linux systemd install/start/stop on a clean Linux machine.
 - Test and polish the Inno Setup installer flow.
 - Add a signed release flow for `PhotoManagerPro.exe` and the installer.
 - Add pause controls and separate schedules for sync, blur, and AI work.
+- Add optional Google Drive sync with explicit OAuth setup, a dry-run plan, upload/download conflict handling, and resumable background transfer queue.
 - Add an optional hard-AI panel: ONNX/SigLIP or CLIP embeddings, backend, model, batch size, GPU/CPU, and embedding cache.
 
 ## License

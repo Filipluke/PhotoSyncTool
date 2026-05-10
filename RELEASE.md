@@ -122,6 +122,40 @@ Manual checks:
 6. `uninstall` removes the service cleanly.
 7. Logs explain failures clearly enough to debug configuration or permission problems.
 
+## Linux systemd Verification
+
+Linux background sync uses a systemd user service named `photo-manager-pro.service`. Test this on a clean Linux desktop or VM with a disposable demo library.
+
+Install and configure:
+
+```bash
+python3 -m pip install --user photosync-tool
+photo-manager-pro
+photo-manager-service once
+```
+
+Install and run the background service:
+
+```bash
+photo-manager-service install
+photo-manager-service start
+photo-manager-service status
+systemctl --user status photo-manager-pro.service
+journalctl --user -u photo-manager-pro.service -f
+```
+
+Manual checks:
+
+1. `once` runs a single sync and writes `~/.config/PhotoManagerPro/photo_manager_service.log`.
+2. `install` writes `~/.config/systemd/user/photo-manager-pro.service`.
+3. `start` changes the user service to running.
+4. File changes in the configured source folder are picked up.
+5. `stop` stops folder watching.
+6. `uninstall` disables and removes the user service.
+7. Logs and `journalctl --user -u photo-manager-pro.service` explain failures clearly.
+
+If the service should keep running after logout, test `loginctl enable-linger "$USER"` on the target machine.
+
 ## Windows Installer
 
 The installer uses Inno Setup. Install Inno Setup locally first, then build the exe and compile the installer script:
@@ -155,14 +189,14 @@ For later production-style releases, sign the installer rather than only the raw
 1. Update `version` in `pyproject.toml`.
 2. Update `CHANGELOG.md`.
 3. Commit and push to `main`.
-4. Create a GitHub Release for a matching tag, for example `v0.1.2`.
+4. Create a GitHub Release for a matching tag, for example `v0.1.3`.
 5. The `.github/workflows/publish.yml` workflow builds and uploads the package to PyPI.
 6. The `.github/workflows/windows-exe.yml` workflow builds `PhotoManagerPro.exe` and attaches it to the GitHub Release.
 
 ## GitHub Release Notes Template
 
 ```markdown
-## Photo Manager Pro v0.1.2
+## Photo Manager Pro v0.1.3
 
 Alpha release focused on local photo organization, sync, indexing, and review workflows.
 
@@ -176,12 +210,14 @@ Alpha release focused on local photo organization, sync, indexing, and review wo
 - Blur scanning with OpenCV.
 - Local Light AI tags/captions with optional OCR.
 - Windows executable build workflow.
+- Linux systemd user-service commands for headless background sync.
 - CI coverage for package build, lint, tests, version consistency, and GUI smoke startup.
 
 ### Known Gaps
 
-- Windows Service mode needs more clean-machine testing.
+- Windows Service and Linux systemd modes need more clean-machine testing.
 - Installer flow is available through Inno Setup but still needs release testing.
+- Google Drive synchronization is planned but not implemented yet.
 - GUI smoke tests and screenshot fixtures are still limited.
 ```
 

@@ -211,6 +211,10 @@ h3 {
   padding-top: 12px;
 }
 
+.platform-band {
+  padding-top: 12px;
+}
+
 .inline-links {
   display: flex;
   flex-wrap: wrap;

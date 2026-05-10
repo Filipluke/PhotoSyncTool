@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.3 - 2026-05-10
+
+- Added Linux systemd user-service support for headless background synchronization.
+- Updated GUI service controls to describe Windows Services and Linux systemd service modes.
+- Expanded documentation and the GitHub Pages site for Windows/Linux usage.
+- Added Google Drive synchronization to the public roadmap as a future optional cloud backend.
+
 ## 0.1.2 - 2026-05-10
 
 - Refreshed the desktop GUI with a product-style command bar, dashboard-first workspace, dedicated Settings and Diagnostics tabs, summary metric cards, and safer cleanup action hierarchy.

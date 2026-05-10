@@ -25,7 +25,7 @@ Describe the problem and what you expected instead.
 
 ## Logs or screenshots
 
-Attach screenshots, terminal output, or relevant lines from `%APPDATA%\PhotoManagerPro\photo_manager_service.log`.
+Attach screenshots, terminal output, or relevant lines from `%APPDATA%\PhotoManagerPro\photo_manager_service.log`, `~/.config/PhotoManagerPro/photo_manager_service.log`, or `journalctl --user -u photo-manager-pro.service`.
 
 ## Data safety notes
 

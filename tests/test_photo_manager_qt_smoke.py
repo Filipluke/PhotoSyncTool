@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -53,6 +54,10 @@ def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, 
         assert window.dashboard_export_btn.text() == "Export Report"
         assert window.run_sync_btn.text() == "Sync Now"
         assert window.start_background_btn.text() == "Start Watching"
+        if sys.platform == "win32":
+            assert window.service_note_label.text() == "Uses Windows Service commands."
+        elif sys.platform.startswith("linux"):
+            assert window.service_note_label.text() == "Uses a systemd user service."
         assert window.root_edit.text() == str(root)
         assert "Library:" in window.root_summary_label.text()
         assert "Source folder does not exist." in [

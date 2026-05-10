@@ -12,11 +12,11 @@ Recommended files:
 
 The GitHub Pages site links directly to:
 
-- `docs/screenshots/dashboard.png`
-- `docs/screenshots/gallery.png`
-- `docs/screenshots/duplicates.png`
+- `docs/screenshots/dashboard.svg`
+- `docs/screenshots/gallery.svg`
+- `docs/screenshots/duplicates.svg`
 
-Keep those three current so the landing page reflects the latest public workflow.
+Keep those three current so the landing page reflects the latest public workflow. PNG captures can still be used for README snippets and GitHub Releases.
 
 Automated capture:
 
@@ -24,7 +24,7 @@ Automated capture:
 QT_QPA_PLATFORM=offscreen python scripts/capture_demo_screenshots.py
 ```
 
-The script creates a disposable demo library, captures sanitized desktop views, and writes the three linked PNG files under `docs/screenshots/`.
+The script creates a disposable demo library, captures sanitized desktop views, and writes PNG files under `docs/screenshots/`.
 
 Suggested capture flow:
 

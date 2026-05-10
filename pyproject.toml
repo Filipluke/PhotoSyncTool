@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "photosync-tool"
-version = "0.1.2"
+version = "0.1.3"
 description = "Local desktop tool for organizing, syncing, indexing, and reviewing photos."
 readme = "README.md"
 license = "MIT"
@@ -19,6 +19,7 @@ classifiers = [
     "Environment :: X11 Applications :: Qt",
     "Intended Audience :: End Users/Desktop",
     "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

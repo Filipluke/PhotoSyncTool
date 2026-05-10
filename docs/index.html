@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta
       name="description"
-      content="Photo Manager Pro is a local Windows desktop tool for organizing, syncing, indexing, and reviewing photo libraries."
+      content="Photo Manager Pro is a local Windows and Linux desktop tool for organizing, syncing, indexing, and reviewing photo libraries."
     >
     <title>Photo Manager Pro</title>
     <link rel="stylesheet" href="assets/site.css">
@@ -16,6 +16,7 @@
         <a class="brand" href="#">Photo Manager Pro</a>
         <div class="nav-links">
           <a href="#features">Features</a>
+          <a href="#platforms">Platforms</a>
           <a href="#roadmap">Roadmap</a>
           <a href="#screenshots">Screenshots</a>
           <a href="#download">Download</a>
@@ -24,11 +25,11 @@
       </nav>
 
       <section class="hero-copy">
-        <p class="eyebrow">Local photo organization for Windows</p>
+        <p class="eyebrow">Local photo organization for Windows and Linux</p>
         <h1>Photo Manager Pro</h1>
         <p class="lead">
-          A desktop workflow for sorting, indexing, reviewing, and cleaning up photo libraries
-          without sending files to the cloud.
+          A desktop workflow for sorting, indexing, reviewing, and cleaning up photo libraries on
+          local machines, with optional cloud sync planned as a separate backend.
         </p>
         <div class="actions">
           <a class="button primary" href="https://github.com/Filipluke/PhotoSyncTool/releases/latest">Latest release</a>
@@ -58,7 +59,32 @@
           </article>
           <article>
             <h3>Run in the background</h3>
-            <p>Watches folders, supports startup options, and keeps a single app instance active in the tray.</p>
+            <p>Watches folders through the GUI, Windows Services, or Linux systemd user services.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="platforms" class="section platform-band">
+        <div class="section-heading">
+          <p class="eyebrow">Platforms</p>
+          <h2>Desktop sync without tying the workflow to one OS</h2>
+        </div>
+        <div class="module-grid">
+          <article>
+            <h3>Windows</h3>
+            <p>Ships as a PyInstaller executable, supports startup settings, and can run headless through Windows Services.</p>
+          </article>
+          <article>
+            <h3>Linux</h3>
+            <p>Runs from the Python package or source, with headless background sync managed by a systemd user service.</p>
+          </article>
+          <article>
+            <h3>Local-first</h3>
+            <p>Keeps metadata in SQLite and file operations on the current machine unless an optional cloud backend is configured.</p>
+          </article>
+          <article>
+            <h3>Google Drive planned</h3>
+            <p>Future cloud sync should use OAuth, dry-run planning, resumable transfers, and conflict-aware background queues.</p>
           </article>
         </div>
       </section>
@@ -85,9 +111,15 @@
             <h3>Reports and exports</h3>
             <p>Create readable summaries, CSV reports, resized copies, ZIP bundles, and static HTML galleries.</p>
           </article>
+          <article>
+            <h3>Cloud sync</h3>
+            <p>Add optional Google Drive synchronization without changing the default local-first workflow.</p>
+          </article>
         </div>
         <div class="inline-links">
           <a href="https://github.com/Filipluke/PhotoSyncTool/blob/main/ROADMAP.md">Roadmap</a>
+          <a href="SYSTEMD.md">Linux systemd</a>
+          <a href="GOOGLE_DRIVE_SYNC.md">Google Drive plan</a>
         </div>
       </section>
 
@@ -130,15 +162,16 @@
       <section id="download" class="section download">
         <div>
           <p class="eyebrow">Distribution</p>
-          <h2>Alpha builds ship through GitHub Releases</h2>
+          <h2>Install on Windows or Linux</h2>
           <p>
-            Release automation builds a Windows executable. Local scripts can also build PyPI
-            distributions and an Inno Setup installer.
+            Release automation builds a Windows executable. Linux users can install the Python
+            package and run the same GUI or headless sync commands.
           </p>
         </div>
         <div class="command-box" aria-label="Install command">
           <code>python -m pip install photosync-tool</code>
           <code>photo-manager-pro</code>
+          <code>photo-manager-service install</code>
         </div>
       </section>
     </main>
