@@ -183,13 +183,15 @@ h3 {
   color: var(--accent-dark);
 }
 
-.feature-grid {
+.feature-grid,
+.module-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
 
-.feature-grid article {
+.feature-grid article,
+.module-grid article {
   min-height: 156px;
   padding: 20px;
   border: 1px solid var(--line);
@@ -199,9 +201,33 @@ h3 {
 }
 
 .feature-grid p,
+.module-grid p,
 .download p {
   margin: 0;
   color: var(--muted);
+}
+
+.roadmap {
+  padding-top: 12px;
+}
+
+.inline-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.inline-links a,
+.footer a {
+  color: var(--accent-dark);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.inline-links a:hover,
+.footer a:hover {
+  text-decoration: underline;
 }
 
 .screenshot-grid {
@@ -308,6 +334,16 @@ code {
   overflow-wrap: anywhere;
 }
 
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 18px;
+  padding: 28px clamp(18px, 4vw, 56px) 42px;
+  border-top: 1px solid var(--line);
+  background: #ffffff;
+}
+
 @media (max-width: 940px) {
   .hero {
     min-height: 72vh;
@@ -319,6 +355,7 @@ code {
   }
 
   .feature-grid,
+  .module-grid,
   .screenshot-grid,
   .download {
     grid-template-columns: 1fr;

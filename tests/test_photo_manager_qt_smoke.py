@@ -29,6 +29,7 @@ def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, 
 
     monkeypatch.setattr(photo_manager_qt, "default_photo_root", lambda: root)
     monkeypatch.setattr(photo_manager_qt, "default_config_path", lambda: config_path)
+    monkeypatch.setattr(photo_manager_qt, "default_legacy_config_path", lambda: tmp_path / "legacy_config.json")
 
     app = _app()
     window = PhotoManagerWindow()

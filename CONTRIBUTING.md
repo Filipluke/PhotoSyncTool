@@ -6,6 +6,7 @@ Photo Manager Pro is an alpha desktop project, so changes should keep the core l
 
 ```powershell
 python -m pip install -e ".[dev]"
+python -m pre_commit install
 python -m ruff check .
 python -m pytest
 ```
@@ -25,6 +26,14 @@ python photo_manager_gui.py
 - Treat delete flows as safety-critical: queue files for review before moving anything to the recycle bin.
 - Keep heavier AI backends optional so the desktop app stays practical to install and run.
 
+## Pull Request Checklist
+
+- Keep changes focused on one feature, bug fix, or documentation improvement.
+- Add or update tests when behavior changes.
+- Avoid committing generated build outputs from `build/`, `dist/`, or `release/`.
+- Update `CHANGELOG.md` under `Unreleased` for user-visible changes.
+- Include screenshots when the GUI or GitHub Pages site changes.
+
 ## Release Checks
 
 Before preparing a release, run:
@@ -33,7 +42,11 @@ Before preparing a release, run:
 python -m pytest
 python -m ruff check .
 python -m build
-python -m twine check dist/*
+python -m twine check dist/*.tar.gz dist/*.whl
 ```
 
 Windows executable, installer, and service behavior still need manual smoke testing on a clean Windows machine or VM before public release promotion.
+
+## Release Notes
+
+Use `RELEASE.md` for operational release steps and `CHANGELOG.md` for user-facing history.

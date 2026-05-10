@@ -139,6 +139,10 @@ def load_app_icon() -> QIcon:
     return icon
 
 
+def default_legacy_config_path() -> Path:
+    return Path(__file__).resolve().parent / "photo_manager_config.json"
+
+
 class SingleInstanceGuard:
     def __init__(self, server_name: str) -> None:
         self.server_name = server_name
@@ -667,7 +671,7 @@ class PhotoManagerWindow(QMainWindow):
     def __init__(self, app_icon: Optional[QIcon] = None) -> None:
         super().__init__()
         self.script_dir = Path(__file__).resolve().parent
-        self.legacy_config_path = self.script_dir / "photo_manager_config.json"
+        self.legacy_config_path = default_legacy_config_path()
         self.config_path = default_config_path()
         self._allow_real_close = False
         self.tray_icon: Optional[QSystemTrayIcon] = None

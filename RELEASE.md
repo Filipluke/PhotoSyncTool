@@ -35,7 +35,7 @@ In GitHub, create an environment named `pypi`:
 python -m pip install -e ".[dev]"
 python -m pytest
 python -m build
-python -m twine check dist/*
+python -m twine check dist/*.tar.gz dist/*.whl
 ```
 
 ## Local Release Script

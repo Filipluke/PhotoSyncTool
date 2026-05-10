@@ -89,6 +89,10 @@ if [[ "$SKIP_TESTS" -eq 0 ]]; then
 fi
 
 if [[ "$SKIP_PYPI_DIST" -eq 0 ]]; then
+  log "Cleaning old PyPI distributions"
+  mkdir -p dist
+  rm -f dist/*.tar.gz dist/*.whl
+
   log "Building PyPI distributions"
   "$PYTHON_CMD" -m build
 

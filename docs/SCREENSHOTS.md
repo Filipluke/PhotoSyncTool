@@ -10,7 +10,7 @@ Recommended files:
 - `docs/screenshots/duplicates.png` - Duplicate Review tab with sample duplicate candidates.
 - `docs/screenshots/delete-queue.png` - Safe Delete Queue with queued items.
 
-The GitHub Pages site currently links directly to:
+The GitHub Pages site links directly to:
 
 - `docs/screenshots/dashboard.png`
 - `docs/screenshots/gallery.png`

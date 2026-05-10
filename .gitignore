@@ -20,3 +20,15 @@ photo_manager_service.log
 blur_candidates*.csv
 *.decisions.csv
 *.decisions.jsonl
+*.local.md
+*.private.md
+*.internal.md
+PRIVATE*.md
+NOTES.local.md
+TODO.local.md
+local/
+private/
+notes/
+.codex/
+.cursor/
+.vscode/

@@ -1,5 +1,10 @@
 # Photo Manager Pro
 
+[![CI](https://github.com/Filipluke/PhotoSyncTool/actions/workflows/ci.yml/badge.svg)](https://github.com/Filipluke/PhotoSyncTool/actions/workflows/ci.yml)
+[![Windows EXE](https://github.com/Filipluke/PhotoSyncTool/actions/workflows/windows-exe.yml/badge.svg)](https://github.com/Filipluke/PhotoSyncTool/actions/workflows/windows-exe.yml)
+[![GitHub Pages](https://github.com/Filipluke/PhotoSyncTool/actions/workflows/pages.yml/badge.svg)](https://github.com/Filipluke/PhotoSyncTool/actions/workflows/pages.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 Photo Manager Pro is a local desktop tool for organizing photos and videos. It has a PySide6 GUI, one-shot sync, background folder watching, blur detection, a local SQLite index, duplicate review, and safe cleanup tools.
 
 The project is currently alpha. The main workflow works, but distribution still needs clean-machine testing, more service-mode hardening, and better automated GUI checks.
@@ -38,6 +43,21 @@ After the first PyPI release, installation should look like this:
 ```powershell
 python -m pip install photosync-tool
 photo-manager-pro
+```
+
+## Project Layout
+
+```text
+photo_manager_core.py       Core sync, date detection, copy, and file helpers
+photo_manager_features.py   Gallery, delete queue, duplicate review, and AI helpers
+photo_manager_index.py      SQLite library index and related commands
+photo_manager_qt.py         Main PySide6 desktop interface
+photo_manager_service.py    Headless runner and Windows Service entry point
+blur_tool.py                Blur detection workflow
+sort_photos_script.py       Legacy/simple CLI sorter
+tests/                      Pytest coverage for core workflows
+docs/                       GitHub Pages site and screenshots
+installer/                  Inno Setup installer definition
 ```
 
 ## Configuration
@@ -109,12 +129,20 @@ The installer output is written to `release/`.
 
 ```powershell
 py -m pip install -e ".[dev]"
+py -m ruff check .
 py -m pytest
 ```
 
 The current tests cover date parsing, copy verification, safe destination naming, media filtering, sync schedule logic, duplicate scanning, and sync report export.
 
 See `CONTRIBUTING.md` for the public-repository quality bar and release checks.
+
+Optional local pre-commit setup:
+
+```powershell
+py -m pre_commit install
+py -m pre_commit run --all-files
+```
 
 ## Screenshots
 
@@ -129,6 +157,10 @@ Currently linked screenshots:
 - `docs/screenshots/dashboard.png`
 - `docs/screenshots/gallery.png`
 - `docs/screenshots/duplicates.png`
+
+## Roadmap
+
+The public roadmap lives in `ROADMAP.md`.
 
 ## Library Index
 

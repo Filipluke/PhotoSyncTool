@@ -2,10 +2,9 @@
 
 ## Unreleased
 
+## 0.1.2 - 2026-05-10
+
 - Refreshed the desktop GUI with a product-style command bar, dashboard-first workspace, dedicated Settings and Diagnostics tabs, summary metric cards, and safer cleanup action hierarchy.
-
-## 0.1.2 - 2026-05-06
-
 - Added dashboard sync report export for indexed synchronization events.
 - Hardened CI to install the project from scratch on Python 3.10 and 3.13 before running tests and package checks.
 - Kept Windows installer and source-run GUI fallback versions aligned with the package version.
@@ -15,6 +14,10 @@
 - Added release version consistency coverage.
 - Added lightweight Ruff linting to CI and PyPI publish checks.
 - Added public contribution and privacy/safety documentation.
+- Added contributor guidelines, public roadmap, and GitHub issue templates.
+- Expanded README project metadata, layout, and development workflow sections.
+- Narrowed PyPI metadata checks to Python distributions so local executable artifacts do not break `twine check`.
+- Added ignore patterns for local notes, editor settings, and scratch files.
 
 ## 0.1.1 - 2026-05-03
 
