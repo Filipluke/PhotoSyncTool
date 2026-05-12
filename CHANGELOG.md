@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.4 - 2026-05-12
+
+- Added an optional Google Drive backend with desktop OAuth, dry-run upload/download planning, app-managed Drive folder creation, resumable uploads/updates, safe missing-file downloads, local SQLite cloud state, and the `photo-manager-drive` CLI entry point.
+- Added a Cloud Sync GUI tab for Google OAuth setup and guarded upload/download actions.
+
 ## 0.1.3 - 2026-05-10
 
 - Refreshed the desktop GUI with a dark futuristic product surface, command bar, dashboard-first workspace, dedicated Settings and Diagnostics tabs, summary metric cards, and safer cleanup action hierarchy.

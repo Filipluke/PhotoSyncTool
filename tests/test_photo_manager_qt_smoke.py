@@ -46,6 +46,7 @@ def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, 
             "Cleanup",
             "AI Metadata",
             "Sync Plan",
+            "Cloud Sync",
             "Settings",
             "Diagnostics",
         ]
@@ -54,6 +55,8 @@ def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, 
         assert window.dashboard_export_btn.text() == "Export Report"
         assert window.run_sync_btn.text() == "Sync Now"
         assert window.start_background_btn.text() == "Start Watching"
+        assert window.google_auth_btn.text() == "Authenticate"
+        assert "OAuth" in window.google_status_label.text()
         if sys.platform == "win32":
             assert window.service_note_label.text() == "Uses Windows Service commands."
         elif sys.platform.startswith("linux"):

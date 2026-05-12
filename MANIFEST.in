@@ -10,6 +10,8 @@ exclude photo_manager_index.sqlite3*
 exclude photo_manager_sync_log.csv
 exclude photo_manager_sync_report.csv
 exclude photo_manager_service.log
+exclude google_drive_credentials.json
+exclude google_drive_token.json
 exclude blur_candidates*.csv
 exclude *.decisions.csv
 exclude *.decisions.jsonl

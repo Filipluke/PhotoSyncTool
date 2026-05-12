@@ -59,6 +59,11 @@ from photo_manager_features import (
     trash_delete_items,
     update_delete_items,
 )
+from photo_manager_google_drive import (
+    DEFAULT_REMOTE_ROOT_NAME,
+    default_credentials_path as default_google_credentials_path,
+    default_token_path as default_google_token_path,
+)
 from sort_photos_script import (
     ensure_file_stable,
     is_media_file,
@@ -211,6 +216,12 @@ class AppConfig:
     autostart_windows: bool
     start_minimized: bool
     minimize_to_tray: bool
+    google_drive_credentials: str
+    google_drive_token: str
+    google_drive_remote_root: str
+    google_drive_parent_id: str
+    google_drive_compute_hash: bool
+    google_drive_overwrite: bool
 
 
 @dataclass
@@ -719,7 +730,7 @@ class PhotoManagerWindow(QMainWindow):
         self.setCentralWidget(root)
         main_layout = QVBoxLayout(root)
         main_layout.setContentsMargins(14, 14, 14, 14)
-        main_layout.setSpacing(12)
+        main_layout.setSpacing(6)
 
         main_layout.addWidget(self._build_command_bar())
 
@@ -732,6 +743,7 @@ class PhotoManagerWindow(QMainWindow):
         self.workspace_tabs.addTab(self._build_delete_queue_tab(), "Cleanup")
         self.workspace_tabs.addTab(self._build_ai_tab(), "AI Metadata")
         self.workspace_tabs.addTab(self._build_compare_tab(), "Sync Plan")
+        self.workspace_tabs.addTab(self._build_cloud_tab(), "Cloud Sync")
         self.workspace_tabs.addTab(self._build_settings_tab(), "Settings")
         self.workspace_tabs.addTab(self._build_diagnostics_tab(), "Diagnostics")
         main_layout.addWidget(self.workspace_tabs, stretch=1)
@@ -785,6 +797,11 @@ class PhotoManagerWindow(QMainWindow):
         self.ai_search_btn.clicked.connect(self.on_ai_search)
         self.ai_search_edit.returnPressed.connect(self.on_ai_search)
         self.ai_open_btn.clicked.connect(self.on_ai_open_selected)
+        self.google_auth_btn.clicked.connect(self.on_google_auth)
+        self.google_plan_upload_btn.clicked.connect(self.on_google_plan_upload)
+        self.google_upload_btn.clicked.connect(self.on_google_upload)
+        self.google_plan_download_btn.clicked.connect(self.on_google_plan_download)
+        self.google_download_btn.clicked.connect(self.on_google_download)
 
     def _build_command_bar(self) -> QWidget:
         bar = QWidget()
@@ -1071,6 +1088,74 @@ class PhotoManagerWindow(QMainWindow):
 
         layout.addWidget(preview_split, stretch=1)
         return self.compare_tab
+
+    def _build_cloud_tab(self) -> QWidget:
+        self.cloud_tab = QWidget()
+        layout = QVBoxLayout(self.cloud_tab)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+        layout.addLayout(
+            self._page_header(
+                "Cloud Sync",
+                "Connect a Google account, review upload/download plans, and run optional Drive transfers.",
+            )
+        )
+
+        setup_group = QGroupBox("Google Drive Account")
+        setup_layout = QFormLayout(setup_group)
+        setup_layout.setSpacing(8)
+        self.google_credentials_edit, credentials_row = self._path_row(self.on_browse_google_credentials)
+        self.google_token_edit = QLineEdit()
+        self.google_remote_root_edit = QLineEdit(DEFAULT_REMOTE_ROOT_NAME)
+        self.google_parent_id_edit = QLineEdit()
+        self.google_parent_id_edit.setPlaceholderText("Optional existing Drive folder ID")
+        self.google_compute_hash_check = QCheckBox("Use stronger hash checks for cloud plans")
+        self.google_overwrite_check = QCheckBox("Allow download overwrite when local files differ")
+        self.google_status_label = QLabel("Google Drive is optional and disabled until OAuth is configured.")
+        self.google_status_label.setObjectName("pathLabel")
+        self.google_status_label.setWordWrap(True)
+
+        setup_layout.addRow("OAuth client JSON", credentials_row)
+        setup_layout.addRow("Token file", self.google_token_edit)
+        setup_layout.addRow("Remote folder", self.google_remote_root_edit)
+        setup_layout.addRow("Parent folder ID", self.google_parent_id_edit)
+        setup_layout.addRow("", self.google_compute_hash_check)
+        setup_layout.addRow("", self.google_overwrite_check)
+        setup_layout.addRow("", self.google_status_label)
+
+        action_group = QGroupBox("Actions")
+        action_layout = QGridLayout(action_group)
+        action_layout.setHorizontalSpacing(8)
+        action_layout.setVerticalSpacing(8)
+        self.google_auth_btn = QPushButton("Authenticate")
+        self.google_auth_btn.setObjectName("primaryAction")
+        self.google_plan_upload_btn = QPushButton("Plan Upload")
+        self.google_plan_upload_btn.setObjectName("secondaryAction")
+        self.google_upload_btn = QPushButton("Upload")
+        self.google_upload_btn.setObjectName("secondaryAction")
+        self.google_plan_download_btn = QPushButton("Plan Download")
+        self.google_plan_download_btn.setObjectName("secondaryAction")
+        self.google_download_btn = QPushButton("Download Missing")
+        self.google_download_btn.setObjectName("secondaryAction")
+
+        action_layout.addWidget(self.google_auth_btn, 0, 0, 1, 2)
+        action_layout.addWidget(self.google_plan_upload_btn, 1, 0)
+        action_layout.addWidget(self.google_upload_btn, 1, 1)
+        action_layout.addWidget(self.google_plan_download_btn, 2, 0)
+        action_layout.addWidget(self.google_download_btn, 2, 1)
+
+        note = QLabel(
+            "This uses a Google OAuth desktop client JSON, not an API key. Plans are written as CSV files in the "
+            "library root. Downloads skip conflicts unless overwrite is enabled."
+        )
+        note.setObjectName("pathLabel")
+        note.setWordWrap(True)
+        action_layout.addWidget(note, 3, 0, 1, 2)
+
+        layout.addWidget(setup_group)
+        layout.addWidget(action_group)
+        layout.addStretch(1)
+        return self.cloud_tab
 
     def _build_diagnostics_tab(self) -> QWidget:
         self.diagnostics_tab = QWidget()
@@ -1563,7 +1648,7 @@ class PhotoManagerWindow(QMainWindow):
             QTabWidget#workspaceTabs QTabBar::tab {
                 background: #0b0f16;
                 color: #8fa3ba;
-                padding: 9px 14px;
+                padding: 7px 14px;
                 border: 1px solid #2a3140;
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
@@ -1755,6 +1840,12 @@ class PhotoManagerWindow(QMainWindow):
             autostart_windows=self._is_windows_startup_enabled(),
             start_minimized=True,
             minimize_to_tray=True,
+            google_drive_credentials=str(default_google_credentials_path()),
+            google_drive_token=str(default_google_token_path()),
+            google_drive_remote_root=DEFAULT_REMOTE_ROOT_NAME,
+            google_drive_parent_id="",
+            google_drive_compute_hash=False,
+            google_drive_overwrite=False,
         )
 
     def _load_config(self) -> AppConfig:
@@ -1801,6 +1892,13 @@ class PhotoManagerWindow(QMainWindow):
         self.autostart_windows_check.setChecked(bool(cfg.autostart_windows))
         self.start_minimized_check.setChecked(bool(getattr(cfg, "start_minimized", True)))
         self.minimize_to_tray_check.setChecked(bool(getattr(cfg, "minimize_to_tray", True)))
+        self.google_credentials_edit.setText(str(getattr(cfg, "google_drive_credentials", default_google_credentials_path())))
+        self.google_token_edit.setText(str(getattr(cfg, "google_drive_token", default_google_token_path())))
+        self.google_remote_root_edit.setText(str(getattr(cfg, "google_drive_remote_root", DEFAULT_REMOTE_ROOT_NAME)))
+        self.google_parent_id_edit.setText(str(getattr(cfg, "google_drive_parent_id", "") or ""))
+        self.google_compute_hash_check.setChecked(bool(getattr(cfg, "google_drive_compute_hash", False)))
+        self.google_overwrite_check.setChecked(bool(getattr(cfg, "google_drive_overwrite", False)))
+        self._refresh_google_status_label()
         if sys.platform != "win32":
             self.autostart_windows_check.setEnabled(False)
             self.autostart_windows_check.setToolTip("Windows-only option.")
@@ -1819,6 +1917,63 @@ class PhotoManagerWindow(QMainWindow):
         except Exception:
             name = ""
         return name or text
+
+    def _refresh_google_status_label(self, message: str = "") -> None:
+        credentials = self._google_credentials_path()
+        token = self._google_token_path()
+        if message:
+            self.google_status_label.setText(message)
+        elif token.exists():
+            self.google_status_label.setText(f"OAuth token ready: {token}")
+        elif credentials.exists():
+            self.google_status_label.setText("OAuth client JSON selected. Authenticate before cloud transfer.")
+        else:
+            self.google_status_label.setText("Choose a Google OAuth desktop client JSON, then authenticate.")
+
+    def _google_credentials_path(self) -> Path:
+        raw = self.google_credentials_edit.text().strip() or str(default_google_credentials_path())
+        return Path(raw).expanduser()
+
+    def _google_token_path(self) -> Path:
+        raw = self.google_token_edit.text().strip() or str(default_google_token_path())
+        return Path(raw).expanduser()
+
+    def _google_remote_root(self) -> str:
+        return self.google_remote_root_edit.text().strip() or DEFAULT_REMOTE_ROOT_NAME
+
+    def _google_plan_path(self, cfg: RuntimeConfig, direction: str) -> Path:
+        return cfg.root / f"google-drive-{direction}-plan.csv"
+
+    def _google_base_command(
+        self,
+        command: str,
+        cfg: Optional[RuntimeConfig] = None,
+        *,
+        include_auth: bool = True,
+    ) -> List[str]:
+        cmd = [
+            str(self._console_python_executable()),
+            str(self.script_dir / "photo_manager_google_drive.py"),
+            command,
+        ]
+        if cfg is not None:
+            cmd += ["--root", str(cfg.root)]
+        cmd += ["--remote-root", self._google_remote_root()]
+        if include_auth:
+            cmd += [
+                "--credentials",
+                str(self._google_credentials_path()),
+                "--token",
+                str(self._google_token_path()),
+            ]
+            parent_id = self.google_parent_id_edit.text().strip()
+            if parent_id:
+                cmd += ["--parent-id", parent_id]
+        if self.include_nonmedia_check.isChecked():
+            cmd.append("--include-nonmedia")
+        if self.google_compute_hash_check.isChecked():
+            cmd.append("--compute-hash")
+        return cmd
 
     def _build_config_from_widgets(self) -> AppConfig:
         return AppConfig(
@@ -1845,6 +2000,12 @@ class PhotoManagerWindow(QMainWindow):
             autostart_windows=self.autostart_windows_check.isChecked(),
             start_minimized=self.start_minimized_check.isChecked(),
             minimize_to_tray=self.minimize_to_tray_check.isChecked(),
+            google_drive_credentials=self.google_credentials_edit.text().strip(),
+            google_drive_token=self.google_token_edit.text().strip(),
+            google_drive_remote_root=self.google_remote_root_edit.text().strip() or DEFAULT_REMOTE_ROOT_NAME,
+            google_drive_parent_id=self.google_parent_id_edit.text().strip(),
+            google_drive_compute_hash=self.google_compute_hash_check.isChecked(),
+            google_drive_overwrite=self.google_overwrite_check.isChecked(),
         )
 
     def _resolve_runtime_config(self) -> RuntimeConfig:
@@ -2224,7 +2385,7 @@ class PhotoManagerWindow(QMainWindow):
 
             return metadata.version("photosync-tool")
         except Exception:
-            return "0.1.3"
+            return "0.1.4"
 
     def _set_preview_image(self, label: QLabel, path: Path) -> None:
         pixmap = QPixmap()
@@ -2921,6 +3082,117 @@ class PhotoManagerWindow(QMainWindow):
         cmd = [str(self._console_python_executable()), str(self.script_dir / "photo_manager_service.py"), command]
         self._start_worker(f"service-{command}", self._run_subprocess_worker, cmd, f"service-{command}")
 
+    def on_google_auth(self) -> None:
+        if not self._validate_google_credentials():
+            return
+        if not self._persist_settings(show_message=False):
+            return
+        cmd = [
+            str(self._console_python_executable()),
+            str(self.script_dir / "photo_manager_google_drive.py"),
+            "auth",
+            "--credentials",
+            str(self._google_credentials_path()),
+            "--token",
+            str(self._google_token_path()),
+        ]
+        self._refresh_google_status_label("Google OAuth starting. Complete the browser sign-in when it opens.")
+        self._start_worker("google-auth", self._run_google_drive_command_worker, cmd, "google-auth")
+
+    def on_google_plan_upload(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        if not self._persist_settings(show_message=False):
+            return
+        plan_out = self._google_plan_path(cfg, "upload")
+        cmd = self._google_base_command("plan", cfg, include_auth=False)
+        cmd += ["--plan-out", str(plan_out)]
+        self._refresh_google_status_label(f"Building upload plan: {plan_out}")
+        self._start_worker("google-plan-upload", self._run_google_drive_command_worker, cmd, "google-plan-upload")
+
+    def on_google_upload(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None or not self._validate_google_credentials():
+            return
+        if not self._persist_settings(show_message=False):
+            return
+        answer = QMessageBox.question(
+            self,
+            "Confirm Google Drive upload",
+            (
+                "Upload new or changed local files to Google Drive?\n\n"
+                "Run Plan Upload first if you have not reviewed the CSV plan."
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        plan_out = self._google_plan_path(cfg, "upload")
+        cmd = self._google_base_command("upload", cfg)
+        cmd += ["--plan-out", str(plan_out), "--execute"]
+        self._refresh_google_status_label("Google Drive upload queued.")
+        self._start_worker("google-upload", self._run_google_drive_command_worker, cmd, "google-upload")
+
+    def on_google_plan_download(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None or not self._validate_google_credentials():
+            return
+        if not self._persist_settings(show_message=False):
+            return
+        plan_out = self._google_plan_path(cfg, "download")
+        cmd = self._google_base_command("download-plan", cfg)
+        cmd += ["--plan-out", str(plan_out)]
+        if self.google_overwrite_check.isChecked():
+            cmd.append("--overwrite")
+        self._refresh_google_status_label(f"Building download plan: {plan_out}")
+        self._start_worker("google-plan-download", self._run_google_drive_command_worker, cmd, "google-plan-download")
+
+    def on_google_download(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None or not self._validate_google_credentials():
+            return
+        if not self._persist_settings(show_message=False):
+            return
+        overwrite = self.google_overwrite_check.isChecked()
+        prompt = "Download missing Google Drive files into the local library?"
+        if overwrite:
+            prompt += "\n\nOverwrite is enabled. Changed local files may be replaced."
+        else:
+            prompt += "\n\nChanged local files will be reported as conflicts and skipped."
+        answer = QMessageBox.question(
+            self,
+            "Confirm Google Drive download",
+            prompt,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        plan_out = self._google_plan_path(cfg, "download")
+        cmd = self._google_base_command("download", cfg)
+        cmd += ["--plan-out", str(plan_out), "--execute"]
+        if overwrite:
+            cmd.append("--overwrite")
+        self._refresh_google_status_label("Google Drive download queued.")
+        self._start_worker("google-download", self._run_google_drive_command_worker, cmd, "google-download")
+
+    def _validate_google_credentials(self) -> bool:
+        credentials = self._google_credentials_path()
+        if credentials.exists():
+            return True
+        QMessageBox.critical(
+            self,
+            "Missing Google OAuth file",
+            (
+                "Choose a Google OAuth desktop client JSON first.\n\n"
+                "Google Drive access to private user files cannot use only an API key."
+            ),
+        )
+        self.workspace_tabs.setCurrentWidget(self.cloud_tab)
+        return False
+
     def on_rebuild_index(self) -> None:
         cfg = self._get_runtime_or_message()
         if cfg is None:
@@ -3073,6 +3345,10 @@ class PhotoManagerWindow(QMainWindow):
         if rc != 0:
             raise RuntimeError(f"{tag}: process exited with code {rc}")
         self.log(f"{tag}: completed.")
+
+    def _run_google_drive_command_worker(self, cmd: List[str], tag: str) -> None:
+        self._run_subprocess_worker(cmd, tag)
+        self._post_ui(lambda: self._refresh_google_status_label(f"{tag}: completed. See Diagnostics for details."))
 
     def _run_blur_auto_delete_worker(self, cfg: RuntimeConfig) -> None:
         decision_map = self._load_blur_decisions(cfg.blur_csv)
@@ -3231,6 +3507,21 @@ class PhotoManagerWindow(QMainWindow):
         )
         if path:
             self.blur_csv_edit.setText(path)
+
+    def on_browse_google_credentials(self) -> None:
+        current = self.google_credentials_edit.text().strip()
+        start = str(Path(current).expanduser().parent) if current else str(default_google_credentials_path().parent)
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Choose Google OAuth desktop client JSON",
+            start,
+            "JSON files (*.json);;All files (*.*)",
+        )
+        if path:
+            self.google_credentials_edit.setText(path)
+            if not self.google_token_edit.text().strip():
+                self.google_token_edit.setText(str(default_google_token_path()))
+            self._refresh_google_status_label()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if (

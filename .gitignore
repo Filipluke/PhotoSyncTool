@@ -17,6 +17,8 @@ photo_manager_index.sqlite3*
 photo_manager_sync_log.csv
 photo_manager_sync_report.csv
 photo_manager_service.log
+google_drive_credentials.json
+google_drive_token.json
 blur_candidates*.csv
 *.decisions.csv
 *.decisions.jsonl

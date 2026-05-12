@@ -36,6 +36,7 @@ Links: [Website](https://filipluke.github.io/PhotoSyncTool/) | [Releases](https:
 - Generate local Light AI tags and captions, with optional local OCR through Tesseract.
 - Run headless one-shot sync or background sync through the service entry point.
 - Manage background sync as a Windows Service or Linux systemd user service.
+- Build a dry-run Google Drive upload plan and upload new/changed files through the optional cloud backend.
 
 ## Requirements
 
@@ -90,6 +91,19 @@ python -m pip install -e ".[ai]"
 ```
 
 OCR also requires a local Tesseract installation.
+
+Optional Google Drive upload support:
+
+```powershell
+python -m pip install -e ".[cloud]"
+photo-manager-drive plan --root "D:\Photos" --plan-out "D:\Photos\google-drive-plan.csv"
+photo-manager-drive upload --root "D:\Photos" --execute
+photo-manager-drive download-plan --root "D:\Photos" --plan-out "D:\Photos\google-drive-download-plan.csv"
+```
+
+Google Drive support requires a Google Cloud OAuth desktop client JSON saved outside the repository. See [docs/GOOGLE_DRIVE_SYNC.md](docs/GOOGLE_DRIVE_SYNC.md).
+
+The desktop app also includes a `Cloud Sync` tab for choosing the OAuth JSON, authenticating, building plans, and running Drive transfers.
 
 ## Quick Start
 
@@ -210,6 +224,7 @@ Editable/source installs expose these entry points:
 photo-manager-pro       Launch the desktop app
 photo-manager-service   Run one-shot sync, foreground watcher, or service commands
 photo-manager-index     Rebuild or update the local SQLite index
+photo-manager-drive     Plan/auth/upload/download through the optional Google Drive backend
 photo-blur-tool         Scan and review blurry images
 photo-sorter            Legacy/simple CLI sorter
 ```
@@ -220,6 +235,7 @@ Useful examples:
 photo-manager-service once
 photo-manager-service run --config "$env:APPDATA\PhotoManagerPro\photo_manager_config.json"
 photo-manager-index rebuild --root "D:\Photos"
+photo-manager-drive plan --root "D:\Photos"
 photo-blur-tool scan --root "D:\Photos" --out blur-candidates.csv
 ```
 
@@ -268,7 +284,7 @@ Full release instructions live in [RELEASE.md](RELEASE.md). Version history live
 - Windows executable and installer builds still need clean-machine smoke testing.
 - Windows Service and Linux systemd flows are implemented but need more real-world hardening.
 - Signed Windows releases are not configured yet.
-- Google Drive synchronization is planned but not implemented.
+- Google Drive synchronization is alpha: no delete mirroring or automatic conflict resolution yet.
 - GUI automation is intentionally light while the desktop workflow is still changing.
 
 ## Project Layout
