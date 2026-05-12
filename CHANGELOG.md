@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.5 - 2026-05-12
+
 - Improved the Cloud Sync setup UI so users can paste Google OAuth Client ID and Client secret directly, then let the app save the credentials JSON locally.
 - Tightened the top workspace layout so the tab bar sits higher and closer to the main dashboard content.
 

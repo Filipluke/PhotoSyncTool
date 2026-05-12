@@ -189,16 +189,16 @@ For later production-style releases, sign the installer rather than only the raw
 1. Update `version` in `pyproject.toml`.
 2. Update `CHANGELOG.md`.
 3. Commit and push to `main`.
-4. Create a GitHub Release for a matching tag, for example `v0.1.4`.
+4. Create a GitHub Release for a matching tag, for example `v0.1.5`.
 5. The `.github/workflows/publish.yml` workflow builds and uploads the package to PyPI.
 6. The `.github/workflows/windows-exe.yml` workflow builds `PhotoManagerPro.exe` and attaches it to the GitHub Release.
 
 ## GitHub Release Notes Template
 
 ```markdown
-## Photo Manager Pro v0.1.4
+## Photo Manager Pro v0.1.5
 
-Alpha release focused on optional Google Drive sync, local photo organization, indexing, and review workflows.
+Patch release focused on a smoother Google Drive setup flow and a tighter desktop tab bar layout.
 
 ### Added
 
@@ -214,6 +214,8 @@ Alpha release focused on optional Google Drive sync, local photo organization, i
 - Linux systemd user-service commands for headless background sync.
 - Optional Google Drive CLI backend with OAuth, dry-run upload/download plans, upload/update, and safe missing-file downloads.
 - Cloud Sync GUI tab for Google OAuth setup and guarded Drive transfer actions.
+- Cloud Sync setup fields for pasting Google OAuth Client ID and Client secret directly.
+- Tighter workspace layout with the tab bar placed closer to the dashboard content.
 - CI coverage for package build, lint, tests, version consistency, and GUI smoke startup.
 
 ### Known Gaps
