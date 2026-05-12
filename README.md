@@ -37,6 +37,7 @@ Links: [Website](https://filipluke.github.io/PhotoSyncTool/) | [Releases](https:
 - Run headless one-shot sync or background sync through the service entry point.
 - Manage background sync as a Windows Service or Linux systemd user service.
 - Build a dry-run Google Drive upload plan and upload new/changed files through the optional cloud backend.
+- Mounted cloud folders, including rclone Google Drive mounts, can be selected as library roots from Settings.
 
 ## Requirements
 

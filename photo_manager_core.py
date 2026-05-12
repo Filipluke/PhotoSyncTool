@@ -31,6 +31,8 @@ SYNC_LOG_NAME = "photo_manager_sync_log.csv"
 APP_CONFIG_DIR_NAME = "PhotoManagerPro"
 DATE_SOURCES = ("exif", "mtime", "ctime")
 PENDING_STATUS = "pending"
+GOOGLE_DRIVE_LIBRARY_FOLDER_NAME = "PhotoManagerPro"
+GOOGLE_DRIVE_FOLDER_NAMES = ("GoogleDrive", "Google Drive", "gdrive")
 
 DAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 DAY_LABELS = {
@@ -65,6 +67,46 @@ def default_config_path() -> Path:
 def default_photo_root() -> Path:
     pictures = Path.home() / "Pictures"
     return pictures if pictures.exists() else Path.home()
+
+
+def google_drive_folder_candidates(home: Optional[Path] = None) -> List[Path]:
+    base = home or Path.home()
+    candidates = [base / name for name in GOOGLE_DRIVE_FOLDER_NAMES]
+
+    if sys.platform == "darwin":
+        cloud_storage = base / "Library" / "CloudStorage"
+        if cloud_storage.exists():
+            try:
+                for path in sorted(cloud_storage.glob("GoogleDrive-*")):
+                    candidates.extend([path / "My Drive", path])
+            except OSError:
+                pass
+
+    unique: List[Path] = []
+    seen = set()
+    for path in candidates:
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
+def detect_google_drive_folder(home: Optional[Path] = None) -> Optional[Path]:
+    for path in google_drive_folder_candidates(home):
+        try:
+            if path.is_dir():
+                return path
+        except OSError:
+            continue
+    return None
+
+
+def default_google_drive_library_folder(home: Optional[Path] = None) -> Optional[Path]:
+    drive_folder = detect_google_drive_folder(home)
+    if drive_folder is None:
+        return None
+    return drive_folder / GOOGLE_DRIVE_LIBRARY_FOLDER_NAME
 
 
 @dataclass

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.6 - 2026-05-12
+
+- Added a Settings shortcut that detects mounted Google Drive folders and uses them as local sync targets.
+
 ## 0.1.5 - 2026-05-12
 
 - Improved the Cloud Sync setup UI so users can paste Google OAuth Client ID and Client secret directly, then let the app save the credentials JSON locally.

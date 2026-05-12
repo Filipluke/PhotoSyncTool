@@ -61,6 +61,8 @@ def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, 
         assert window.google_save_credentials_btn.text() == "Save OAuth JSON"
         assert window.google_client_secret_edit.echoMode() == window.google_client_secret_edit.EchoMode.Password
         assert "OAuth" in window.google_status_label.text()
+        assert window.use_google_drive_btn.text() == "Use Google Drive"
+        assert window.open_google_drive_btn.text() == "Open"
         if sys.platform == "win32":
             assert window.service_note_label.text() == "Uses Windows Service commands."
         elif sys.platform.startswith("linux"):

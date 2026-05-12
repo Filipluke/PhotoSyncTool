@@ -2,7 +2,13 @@
 
 Google Drive synchronization is an optional cloud backend. The default app remains local-first: installing Photo Manager Pro does not create cloud credentials, upload files, or require a Google account.
 
-Current status: alpha CLI backend. It can build dry-run upload/download plans, run OAuth for a desktop app, create/use a Google Drive folder, upload new local files, update changed files that were previously uploaded, download missing remote files, and store local cloud state in the library SQLite index. It does not mirror deletes or resolve conflicts automatically, and it is not wired into the GUI yet.
+Current status: alpha CLI backend with GUI controls in the `Cloud Sync` tab. It can build dry-run upload/download plans, run OAuth for a desktop app, create/use a Google Drive folder, upload new local files, update changed files that were previously uploaded, download missing remote files, and store local cloud state in the library SQLite index. It does not mirror deletes or resolve conflicts automatically.
+
+## Supported Today: Mounted Folder Target
+
+Photo Manager Pro can use Google Drive when it is already mounted as a local folder, for example through `rclone mount`, Google Drive for desktop, or a desktop file-manager integration that exposes a real filesystem path. In Settings, the Google Drive shortcut detects common mount folders such as `~/GoogleDrive` and sets the library root to a `PhotoManagerPro` folder inside the mounted Drive.
+
+This keeps the current sync engine local-first: files are copied to a folder, and the mount provider handles upload/sync in the background. A Google API key alone is not enough for private user Drive writes; a direct Drive backend would need OAuth.
 
 ## Goals
 

@@ -5,9 +5,13 @@ from pathlib import Path
 import pytest
 
 from photo_manager_core import (
+    GOOGLE_DRIVE_LIBRARY_FOLDER_NAME,
     RuntimeConfig,
     default_config_path,
+    default_google_drive_library_folder,
     default_photo_root,
+    detect_google_drive_folder,
+    google_drive_folder_candidates,
     is_sync_time_allowed,
     parse_hour_windows,
     parse_weekly_hours,
@@ -57,6 +61,38 @@ def test_default_photo_root_prefers_pictures(monkeypatch: pytest.MonkeyPatch, tm
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
     assert default_photo_root() == pictures
+
+
+def test_google_drive_candidates_include_common_mount_names(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    assert google_drive_folder_candidates(tmp_path)[:3] == [
+        tmp_path / "GoogleDrive",
+        tmp_path / "Google Drive",
+        tmp_path / "gdrive",
+    ]
+
+
+def test_detect_google_drive_folder_returns_default_library(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    mount = tmp_path / "GoogleDrive"
+    mount.mkdir()
+
+    assert detect_google_drive_folder(tmp_path) == mount
+    assert default_google_drive_library_folder(tmp_path) == mount / GOOGLE_DRIVE_LIBRARY_FOLDER_NAME
+
+
+def test_detect_google_drive_folder_returns_none_when_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    assert detect_google_drive_folder(tmp_path) is None
+    assert default_google_drive_library_folder(tmp_path) is None
 
 
 def test_parse_hour_windows_accepts_daytime_and_overnight_ranges() -> None:

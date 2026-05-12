@@ -189,14 +189,14 @@ For later production-style releases, sign the installer rather than only the raw
 1. Update `version` in `pyproject.toml`.
 2. Update `CHANGELOG.md`.
 3. Commit and push to `main`.
-4. Create a GitHub Release for a matching tag, for example `v0.1.5`.
+4. Create a GitHub Release for a matching tag, for example `v0.1.6`.
 5. The `.github/workflows/publish.yml` workflow builds and uploads the package to PyPI.
 6. The `.github/workflows/windows-exe.yml` workflow builds `PhotoManagerPro.exe` and attaches it to the GitHub Release.
 
 ## GitHub Release Notes Template
 
 ```markdown
-## Photo Manager Pro v0.1.5
+## Photo Manager Pro v0.1.6
 
 Patch release focused on a smoother Google Drive setup flow and a tighter desktop tab bar layout.
 

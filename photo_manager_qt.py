@@ -24,8 +24,12 @@ import urllib.request
 from photo_manager_core import (
     DAY_KEYS,
     DAY_LABELS,
+    GOOGLE_DRIVE_LIBRARY_FOLDER_NAME,
     default_config_path,
+    default_google_drive_library_folder,
     default_photo_root,
+    detect_google_drive_folder,
+    google_drive_folder_candidates,
     parse_weekly_hours,
     run_batch_sync,
     serialize_weekly_hours,
@@ -750,6 +754,8 @@ class PhotoManagerWindow(QMainWindow):
         main_layout.addWidget(self.workspace_tabs, stretch=1)
 
         self.save_settings_btn.clicked.connect(self.on_save_settings)
+        self.use_google_drive_btn.clicked.connect(self.on_use_google_drive_root)
+        self.open_google_drive_btn.clicked.connect(self.on_open_google_drive_root)
         self.compare_btn.clicked.connect(self.on_open_sync_plan)
         self.run_sync_btn.clicked.connect(self.on_run_sync_now)
         self.start_background_btn.clicked.connect(self.on_start_background)
@@ -897,7 +903,22 @@ class PhotoManagerWindow(QMainWindow):
         self.root_edit, root_row = self._path_row(self.on_browse_root)
         self.source_edit, source_row = self._path_row(self.on_browse_source)
         self.blur_csv_edit, blur_csv_row = self._path_row(self.on_browse_blur_csv)
+        self.google_drive_status_label = QLabel("Checking for mounted Google Drive...")
+        self.google_drive_status_label.setObjectName("pathLabel")
+        self.use_google_drive_btn = QPushButton("Use Google Drive")
+        self.use_google_drive_btn.setObjectName("toolbarButton")
+        self.open_google_drive_btn = QPushButton("Open")
+        self.open_google_drive_btn.setObjectName("toolbarButton")
+        self.open_google_drive_btn.setFixedWidth(72)
+        google_drive_row = QWidget()
+        google_drive_layout = QHBoxLayout(google_drive_row)
+        google_drive_layout.setContentsMargins(0, 0, 0, 0)
+        google_drive_layout.setSpacing(6)
+        google_drive_layout.addWidget(self.google_drive_status_label, stretch=1)
+        google_drive_layout.addWidget(self.use_google_drive_btn)
+        google_drive_layout.addWidget(self.open_google_drive_btn)
         config_layout.addRow("Root folder", root_row)
+        config_layout.addRow("Google Drive", google_drive_row)
         config_layout.addRow("Source folder", source_row)
         config_layout.addRow("Blur CSV", blur_csv_row)
 
@@ -1929,6 +1950,7 @@ class PhotoManagerWindow(QMainWindow):
             source_label = self._compact_path_label(str(cfg.source_dir))
             self.root_summary_label.setText(f"Library: {root_label} | Source: {source_label}")
             self.root_summary_label.setToolTip(f"Library: {cfg.root_dir}\nSource: {cfg.source_dir}")
+        self._refresh_google_drive_status()
 
     def _compact_path_label(self, raw: str) -> str:
         text = str(raw).strip()
@@ -2035,6 +2057,22 @@ class PhotoManagerWindow(QMainWindow):
         if self.google_compute_hash_check.isChecked():
             cmd.append("--compute-hash")
         return cmd
+
+    def _refresh_google_drive_status(self) -> None:
+        drive_folder = detect_google_drive_folder()
+        if drive_folder is not None:
+            library_folder = default_google_drive_library_folder()
+            self.google_drive_status_label.setText(f"Detected: {drive_folder.name}")
+            self.google_drive_status_label.setToolTip(
+                f"Google Drive folder: {drive_folder}\nLibrary folder: {library_folder}"
+            )
+            self.open_google_drive_btn.setEnabled(True)
+            return
+
+        checked = "\n".join(str(path) for path in google_drive_folder_candidates())
+        self.google_drive_status_label.setText("No mounted folder detected")
+        self.google_drive_status_label.setToolTip(f"Checked:\n{checked}")
+        self.open_google_drive_btn.setEnabled(False)
 
     def _build_config_from_widgets(self) -> AppConfig:
         return AppConfig(
@@ -2446,7 +2484,7 @@ class PhotoManagerWindow(QMainWindow):
 
             return metadata.version("photosync-tool")
         except Exception:
-            return "0.1.5"
+            return "0.1.6"
 
     def _set_preview_image(self, label: QLabel, path: Path) -> None:
         pixmap = QPixmap()
@@ -3557,6 +3595,48 @@ class PhotoManagerWindow(QMainWindow):
         path = QFileDialog.getExistingDirectory(self, "Choose root folder", start)
         if path:
             self.root_edit.setText(path)
+            self._refresh_google_drive_status()
+
+    def on_use_google_drive_root(self) -> None:
+        drive_folder = detect_google_drive_folder()
+        if drive_folder is None:
+            checked = "\n".join(str(path) for path in google_drive_folder_candidates())
+            QMessageBox.information(
+                self,
+                "Google Drive folder not found",
+                "No mounted Google Drive folder was found.\n\n"
+                "Mount Google Drive with rclone, Google Drive for desktop, or your file manager first. "
+                "You can also click Browse and choose the folder manually.\n\n"
+                f"Checked:\n{checked}",
+            )
+            self.log("google-drive: no mounted folder detected")
+            self._refresh_google_drive_status()
+            return
+
+        library_folder = drive_folder / GOOGLE_DRIVE_LIBRARY_FOLDER_NAME
+        try:
+            library_folder.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            QMessageBox.critical(
+                self,
+                "Google Drive folder error",
+                f"Could not create the PhotoManagerPro library folder:\n{library_folder}\n\n{exc}",
+            )
+            self.log(f"google-drive: could not prepare library folder: {exc}")
+            return
+
+        self.root_edit.setText(str(library_folder))
+        self._refresh_google_drive_status()
+        self.log(f"google-drive: root set to {library_folder}")
+
+    def on_open_google_drive_root(self) -> None:
+        drive_folder = detect_google_drive_folder()
+        if drive_folder is None:
+            self._refresh_google_drive_status()
+            return
+        library_folder = default_google_drive_library_folder()
+        target = library_folder if library_folder is not None and library_folder.exists() else drive_folder
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 
     def on_browse_source(self) -> None:
         start = self.root_edit.text().strip() or str(self.script_dir)
