@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Improved the Cloud Sync setup UI so users can paste Google OAuth Client ID and Client secret directly, then let the app save the credentials JSON locally.
+- Tightened the top workspace layout so the tab bar sits higher and closer to the main dashboard content.
+
 ## 0.1.4 - 2026-05-12
 
 - Added an optional Google Drive backend with desktop OAuth, dry-run upload/download planning, app-managed Drive folder creation, resumable uploads/updates, safe missing-file downloads, local SQLite cloud state, and the `photo-manager-drive` CLI entry point.

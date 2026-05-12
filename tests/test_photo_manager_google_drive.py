@@ -6,11 +6,13 @@ from photo_manager_google_drive import (
     build_download_plan,
     build_upload_plan,
     connect,
+    desktop_credentials_payload,
     default_index_path,
     drive_query_literal,
     get_cloud_state,
     record_cloud_upload,
     resolve_download_target,
+    write_desktop_credentials_file,
     write_download_plan_csv,
     write_plan_csv,
 )
@@ -201,3 +203,23 @@ def test_resolve_download_target_rejects_path_escape(tmp_path: Path) -> None:
 
 def test_drive_query_literal_escapes_quotes_and_backslashes() -> None:
     assert drive_query_literal("Bob's \\ Photos") == "'Bob\\'s \\\\ Photos'"
+
+
+def test_desktop_credentials_payload_matches_google_installed_app_shape() -> None:
+    payload = desktop_credentials_payload("client-id.apps.googleusercontent.com", "secret", project_id="demo")
+
+    installed = payload["installed"]
+    assert installed["client_id"] == "client-id.apps.googleusercontent.com"
+    assert installed["client_secret"] == "secret"
+    assert installed["project_id"] == "demo"
+    assert installed["token_uri"] == "https://oauth2.googleapis.com/token"
+    assert installed["redirect_uris"] == ["http://localhost"]
+
+
+def test_write_desktop_credentials_file_creates_parent_and_json(tmp_path: Path) -> None:
+    path = write_desktop_credentials_file(tmp_path / "config" / "google.json", "client-id", "secret")
+
+    text = path.read_text(encoding="utf-8")
+    assert '"installed"' in text
+    assert '"client_id": "client-id"' in text
+    assert '"client_secret": "secret"' in text

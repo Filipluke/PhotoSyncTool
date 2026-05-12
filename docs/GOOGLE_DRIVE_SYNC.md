@@ -19,7 +19,7 @@ Install the optional cloud dependencies:
 python -m pip install -e ".[cloud]"
 ```
 
-Create a Google Cloud OAuth client for a desktop app, download the client JSON, and store it outside the repository. The default path is:
+Create a Google Cloud OAuth client for a desktop app. In the GUI, paste the Client ID and Client secret into the `Cloud Sync` tab and click `Save OAuth JSON`; the app writes the JSON file for you. You can also download the client JSON from Google Cloud and store it outside the repository. The default path is:
 
 ```text
 %APPDATA%\PhotoManagerPro\google_drive_credentials.json
@@ -34,7 +34,7 @@ photo-manager-drive auth --credentials "%APPDATA%\PhotoManagerPro\google_drive_c
 
 The refresh token is saved next to the app config as `google_drive_token.json`.
 
-The GUI has a `Cloud Sync` tab with the same setup fields and actions. Use it to choose the OAuth client JSON, authenticate, build upload/download plans, and run transfers. The app uses OAuth for user Drive access; a plain API key is not enough for private photo libraries.
+The GUI has a `Cloud Sync` tab with the same setup fields and actions. Use it to paste Client ID/secret or choose an OAuth client JSON, authenticate, build upload/download plans, and run transfers. The app uses OAuth for user Drive access; a plain API key is not enough for private photo libraries.
 
 ## Upload Flow
 

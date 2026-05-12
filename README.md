@@ -101,9 +101,9 @@ photo-manager-drive upload --root "D:\Photos" --execute
 photo-manager-drive download-plan --root "D:\Photos" --plan-out "D:\Photos\google-drive-download-plan.csv"
 ```
 
-Google Drive support requires a Google Cloud OAuth desktop client JSON saved outside the repository. See [docs/GOOGLE_DRIVE_SYNC.md](docs/GOOGLE_DRIVE_SYNC.md).
+Google Drive support requires a Google Cloud OAuth desktop client. In the GUI you can paste the Client ID and Client secret and let the app save the JSON locally, or choose an existing OAuth JSON. See [docs/GOOGLE_DRIVE_SYNC.md](docs/GOOGLE_DRIVE_SYNC.md).
 
-The desktop app also includes a `Cloud Sync` tab for choosing the OAuth JSON, authenticating, building plans, and running Drive transfers.
+The desktop app also includes a `Cloud Sync` tab for saving OAuth details, authenticating, building plans, and running Drive transfers.
 
 ## Quick Start
 

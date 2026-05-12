@@ -52,10 +52,14 @@ def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, 
         ]
         assert window.windowTitle() == "Photo Manager Pro"
         assert window.workspace_tabs.currentIndex() == 0
+        assert window.centralWidget().layout().spacing() == 0
+        assert window.centralWidget().layout().contentsMargins().top() == 4
         assert window.dashboard_export_btn.text() == "Export Report"
         assert window.run_sync_btn.text() == "Sync Now"
         assert window.start_background_btn.text() == "Start Watching"
         assert window.google_auth_btn.text() == "Authenticate"
+        assert window.google_save_credentials_btn.text() == "Save OAuth JSON"
+        assert window.google_client_secret_edit.echoMode() == window.google_client_secret_edit.EchoMode.Password
         assert "OAuth" in window.google_status_label.text()
         if sys.platform == "win32":
             assert window.service_note_label.text() == "Uses Windows Service commands."

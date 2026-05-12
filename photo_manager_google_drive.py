@@ -26,6 +26,9 @@ DEFAULT_CREDENTIALS_NAME = "google_drive_credentials.json"
 DEFAULT_TOKEN_NAME = "google_drive_token.json"
 DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
 DEFAULT_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
+GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+GOOGLE_CERT_URL = "https://www.googleapis.com/oauth2/v1/certs"
 
 Logger = Callable[[str], None]
 
@@ -89,6 +92,41 @@ def default_credentials_path() -> Path:
 
 def default_token_path() -> Path:
     return user_config_dir() / DEFAULT_TOKEN_NAME
+
+
+def desktop_credentials_payload(client_id: str, client_secret: str, *, project_id: str = "") -> dict:
+    client_id = client_id.strip()
+    client_secret = client_secret.strip()
+    project_id = project_id.strip() or "photo-manager-pro"
+    if not client_id:
+        raise ValueError("Google OAuth client ID is required.")
+    if not client_secret:
+        raise ValueError("Google OAuth client secret is required.")
+    return {
+        "installed": {
+            "client_id": client_id,
+            "project_id": project_id,
+            "auth_uri": GOOGLE_AUTH_URI,
+            "token_uri": GOOGLE_TOKEN_URI,
+            "auth_provider_x509_cert_url": GOOGLE_CERT_URL,
+            "client_secret": client_secret,
+            "redirect_uris": ["http://localhost"],
+        }
+    }
+
+
+def write_desktop_credentials_file(
+    path: Path,
+    client_id: str,
+    client_secret: str,
+    *,
+    project_id: str = "",
+) -> Path:
+    path = path.expanduser().resolve()
+    payload = desktop_credentials_payload(client_id, client_secret, project_id=project_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return path
 
 
 def utc_now() -> str:

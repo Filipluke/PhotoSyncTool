@@ -63,6 +63,7 @@ from photo_manager_google_drive import (
     DEFAULT_REMOTE_ROOT_NAME,
     default_credentials_path as default_google_credentials_path,
     default_token_path as default_google_token_path,
+    write_desktop_credentials_file,
 )
 from sort_photos_script import (
     ensure_file_stable,
@@ -729,8 +730,8 @@ class PhotoManagerWindow(QMainWindow):
         root.setObjectName("appRoot")
         self.setCentralWidget(root)
         main_layout = QVBoxLayout(root)
-        main_layout.setContentsMargins(14, 14, 14, 14)
-        main_layout.setSpacing(6)
+        main_layout.setContentsMargins(14, 4, 14, 14)
+        main_layout.setSpacing(0)
 
         main_layout.addWidget(self._build_command_bar())
 
@@ -797,6 +798,7 @@ class PhotoManagerWindow(QMainWindow):
         self.ai_search_btn.clicked.connect(self.on_ai_search)
         self.ai_search_edit.returnPressed.connect(self.on_ai_search)
         self.ai_open_btn.clicked.connect(self.on_ai_open_selected)
+        self.google_save_credentials_btn.clicked.connect(self.on_google_save_credentials)
         self.google_auth_btn.clicked.connect(self.on_google_auth)
         self.google_plan_upload_btn.clicked.connect(self.on_google_plan_upload)
         self.google_upload_btn.clicked.connect(self.on_google_upload)
@@ -1105,6 +1107,19 @@ class PhotoManagerWindow(QMainWindow):
         setup_layout = QFormLayout(setup_group)
         setup_layout.setSpacing(8)
         self.google_credentials_edit, credentials_row = self._path_row(self.on_browse_google_credentials)
+        self.google_client_id_edit = QLineEdit()
+        self.google_client_id_edit.setPlaceholderText("Client ID from Google Cloud OAuth desktop app")
+        self.google_client_secret_edit = QLineEdit()
+        self.google_client_secret_edit.setPlaceholderText("Client secret")
+        self.google_client_secret_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.google_save_credentials_btn = QPushButton("Save OAuth JSON")
+        self.google_save_credentials_btn.setObjectName("secondaryAction")
+        secret_row = QWidget()
+        secret_layout = QHBoxLayout(secret_row)
+        secret_layout.setContentsMargins(0, 0, 0, 0)
+        secret_layout.setSpacing(6)
+        secret_layout.addWidget(self.google_client_secret_edit, stretch=1)
+        secret_layout.addWidget(self.google_save_credentials_btn)
         self.google_token_edit = QLineEdit()
         self.google_remote_root_edit = QLineEdit(DEFAULT_REMOTE_ROOT_NAME)
         self.google_parent_id_edit = QLineEdit()
@@ -1116,6 +1131,8 @@ class PhotoManagerWindow(QMainWindow):
         self.google_status_label.setWordWrap(True)
 
         setup_layout.addRow("OAuth client JSON", credentials_row)
+        setup_layout.addRow("Client ID", self.google_client_id_edit)
+        setup_layout.addRow("Client secret", secret_row)
         setup_layout.addRow("Token file", self.google_token_edit)
         setup_layout.addRow("Remote folder", self.google_remote_root_edit)
         setup_layout.addRow("Parent folder ID", self.google_parent_id_edit)
@@ -1641,6 +1658,10 @@ class PhotoManagerWindow(QMainWindow):
                 background: transparent;
                 top: -1px;
             }
+            QTabWidget#workspaceTabs::tab-bar {
+                left: 0;
+                top: -6px;
+            }
             QTabWidget#workspaceTabs QTabBar::base {
                 border: none;
                 background: transparent;
@@ -1898,6 +1919,7 @@ class PhotoManagerWindow(QMainWindow):
         self.google_parent_id_edit.setText(str(getattr(cfg, "google_drive_parent_id", "") or ""))
         self.google_compute_hash_check.setChecked(bool(getattr(cfg, "google_drive_compute_hash", False)))
         self.google_overwrite_check.setChecked(bool(getattr(cfg, "google_drive_overwrite", False)))
+        self._load_google_credentials_fields()
         self._refresh_google_status_label()
         if sys.platform != "win32":
             self.autostart_windows_check.setEnabled(False)
@@ -1928,7 +1950,24 @@ class PhotoManagerWindow(QMainWindow):
         elif credentials.exists():
             self.google_status_label.setText("OAuth client JSON selected. Authenticate before cloud transfer.")
         else:
-            self.google_status_label.setText("Choose a Google OAuth desktop client JSON, then authenticate.")
+            self.google_status_label.setText("Paste Client ID/secret or choose a Google OAuth desktop client JSON.")
+
+    def _load_google_credentials_fields(self) -> None:
+        path = self._google_credentials_path()
+        if not path.exists():
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            installed = data.get("installed", {})
+            client_id = str(installed.get("client_id", "")).strip()
+            client_secret = str(installed.get("client_secret", "")).strip()
+        except Exception as exc:
+            self.log(f"google-drive: could not read OAuth JSON fields: {exc}")
+            return
+        if client_id and not self.google_client_id_edit.text().strip():
+            self.google_client_id_edit.setText(client_id)
+        if client_secret and not self.google_client_secret_edit.text().strip():
+            self.google_client_secret_edit.setText(client_secret)
 
     def _google_credentials_path(self) -> Path:
         raw = self.google_credentials_edit.text().strip() or str(default_google_credentials_path())
@@ -1940,6 +1979,28 @@ class PhotoManagerWindow(QMainWindow):
 
     def _google_remote_root(self) -> str:
         return self.google_remote_root_edit.text().strip() or DEFAULT_REMOTE_ROOT_NAME
+
+    def _write_google_credentials_from_fields(self, *, show_message: bool) -> bool:
+        client_id = self.google_client_id_edit.text().strip()
+        client_secret = self.google_client_secret_edit.text().strip()
+        if not client_id or not client_secret:
+            QMessageBox.critical(
+                self,
+                "Missing Google OAuth details",
+                "Paste both Client ID and Client secret, or choose an existing OAuth desktop client JSON.",
+            )
+            return False
+        try:
+            out = write_desktop_credentials_file(self._google_credentials_path(), client_id, client_secret)
+        except Exception as exc:
+            QMessageBox.critical(self, "Could not save OAuth JSON", str(exc))
+            return False
+        self.google_credentials_edit.setText(str(out))
+        self._refresh_google_status_label(f"OAuth client JSON saved: {out}")
+        self.log(f"google-drive: OAuth client JSON saved to {out}")
+        if show_message:
+            QMessageBox.information(self, "OAuth JSON saved", f"Saved:\n{out}")
+        return True
 
     def _google_plan_path(self, cfg: RuntimeConfig, direction: str) -> Path:
         return cfg.root / f"google-drive-{direction}-plan.csv"
@@ -3082,6 +3143,10 @@ class PhotoManagerWindow(QMainWindow):
         cmd = [str(self._console_python_executable()), str(self.script_dir / "photo_manager_service.py"), command]
         self._start_worker(f"service-{command}", self._run_subprocess_worker, cmd, f"service-{command}")
 
+    def on_google_save_credentials(self) -> None:
+        if self._write_google_credentials_from_fields(show_message=True):
+            self._persist_settings(show_message=False)
+
     def on_google_auth(self) -> None:
         if not self._validate_google_credentials():
             return
@@ -3182,11 +3247,13 @@ class PhotoManagerWindow(QMainWindow):
         credentials = self._google_credentials_path()
         if credentials.exists():
             return True
+        if self.google_client_id_edit.text().strip() or self.google_client_secret_edit.text().strip():
+            return self._write_google_credentials_from_fields(show_message=False)
         QMessageBox.critical(
             self,
             "Missing Google OAuth file",
             (
-                "Choose a Google OAuth desktop client JSON first.\n\n"
+                "Paste Client ID and Client secret, or choose a Google OAuth desktop client JSON first.\n\n"
                 "Google Drive access to private user files cannot use only an API key."
             ),
         )
@@ -3521,6 +3588,9 @@ class PhotoManagerWindow(QMainWindow):
             self.google_credentials_edit.setText(path)
             if not self.google_token_edit.text().strip():
                 self.google_token_edit.setText(str(default_google_token_path()))
+            self.google_client_id_edit.clear()
+            self.google_client_secret_edit.clear()
+            self._load_google_credentials_fields()
             self._refresh_google_status_label()
 
     def closeEvent(self, event: QCloseEvent) -> None:
