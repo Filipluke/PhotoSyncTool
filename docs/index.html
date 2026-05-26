@@ -7,7 +7,7 @@
       name="description"
       content="Photo Manager Pro is a local Windows and Linux desktop tool for organizing, syncing, indexing, and reviewing photo libraries."
     >
-    <title>Photo Manager Pro</title>
+    <title>Photo Manager Pro - Local Photo Dashboard</title>
     <link rel="stylesheet" href="assets/site.css">
   </head>
   <body>
@@ -16,25 +16,39 @@
         <a class="brand" href="#">Photo Manager Pro</a>
         <div class="nav-links">
           <a href="#features">Features</a>
-          <a href="#platforms">Platforms</a>
-          <a href="#roadmap">Roadmap</a>
+          <a href="#workflow">Workflow</a>
           <a href="#screenshots">Screenshots</a>
           <a href="#download">Download</a>
+          <a href="#roadmap">Roadmap</a>
           <a href="https://github.com/Filipluke/PhotoSyncTool">GitHub</a>
         </div>
       </nav>
 
       <section class="hero-copy">
-        <p class="eyebrow">Local photo organization for Windows and Linux</p>
+        <p class="eyebrow">Local-first photo management for Windows and Linux</p>
         <h1>Photo Manager Pro</h1>
         <p class="lead">
-          A desktop workflow for sorting, indexing, reviewing, and cleaning up photo libraries on
-          local machines, with optional cloud sync planned as a separate backend.
+          A polished desktop dashboard for local photo sync, library indexing, duplicate review,
+          cleanup queues, AI metadata, cloud transfer planning, and phone imports.
         </p>
         <div class="actions">
           <a class="button primary" href="https://github.com/Filipluke/PhotoSyncTool/releases/latest">Latest release</a>
           <a class="button secondary" href="https://github.com/Filipluke/PhotoSyncTool">Source code</a>
         </div>
+        <dl class="hero-stats" aria-label="Project highlights">
+          <div>
+            <dt>Local-first</dt>
+            <dd>SQLite metadata and review decisions stay on your device.</dd>
+          </div>
+          <div>
+            <dt>Dashboard UI</dt>
+            <dd>Sync health, cleanup pressure, and recent events in one view.</dd>
+          </div>
+          <div>
+            <dt>Phone Connect</dt>
+            <dd>Receive Android media over the same LAN, then sort the inbox.</dd>
+          </div>
+        </dl>
       </section>
     </header>
 
@@ -42,91 +56,90 @@
       <section id="features" class="section">
         <div class="section-heading">
           <p class="eyebrow">What it does</p>
-          <h2>Built around practical library maintenance</h2>
+          <h2>A calmer control room for photo libraries</h2>
         </div>
         <div class="feature-grid">
           <article>
-            <h3>Sync and sort</h3>
-            <p>Copies media into year folders using EXIF, filename dates, and filesystem timestamps as fallbacks.</p>
+            <span class="card-kicker">Sync</span>
+            <h3>Sort incoming media</h3>
+            <p>Copy photos and videos into year folders using EXIF, filename dates, and timestamp fallbacks.</p>
           </article>
           <article>
-            <h3>Index locally</h3>
+            <span class="card-kicker">Index</span>
+            <h3>Build a local library index</h3>
             <p>Stores file metadata, sync events, blur scores, captions, tags, and review decisions in SQLite.</p>
           </article>
           <article>
-            <h3>Review safely</h3>
+            <span class="card-kicker">Cleanup</span>
+            <h3>Review before deleting</h3>
             <p>Queues duplicates and low-quality candidates before moving files to the recycle bin.</p>
           </article>
           <article>
+            <span class="card-kicker">Automation</span>
             <h3>Run in the background</h3>
-            <p>Watches folders through the GUI, Windows Services, or Linux systemd user services.</p>
+            <p>Watch folders through the GUI, Windows Services, or Linux systemd user services.</p>
+          </article>
+          <article>
+            <span class="card-kicker">AI Metadata</span>
+            <h3>Search tags and captions</h3>
+            <p>Generate lightweight local tags/captions and search metadata without leaving the app.</p>
+          </article>
+          <article>
+            <span class="card-kicker">Cloud Sync</span>
+            <h3>Plan Google Drive transfers</h3>
+            <p>Authenticate with OAuth, preview upload/download plans, and run guarded Drive transfers.</p>
+          </article>
+          <article>
+            <span class="card-kicker">Phone Connect</span>
+            <h3>Receive Android uploads</h3>
+            <p>Start the LAN receiver, pair with a code, and sort uploaded phone media into the desktop library.</p>
+          </article>
+          <article>
+            <span class="card-kicker">Diagnostics</span>
+            <h3>Trace sync activity</h3>
+            <p>Inspect operational logs, export reports, and keep sync failures visible instead of hidden.</p>
           </article>
         </div>
       </section>
 
-      <section id="platforms" class="section platform-band">
+      <section id="workflow" class="section platform-band">
         <div class="section-heading">
-          <p class="eyebrow">Platforms</p>
-          <h2>Desktop sync without tying the workflow to one OS</h2>
+          <p class="eyebrow">Workflow</p>
+          <h2>From camera roll to reviewed library</h2>
         </div>
-        <div class="module-grid">
-          <article>
-            <h3>Windows</h3>
-            <p>Ships as a PyInstaller executable, supports startup settings, and can run headless through Windows Services.</p>
-          </article>
-          <article>
-            <h3>Linux</h3>
-            <p>Runs from the Python package or source, with headless background sync managed by a systemd user service.</p>
-          </article>
-          <article>
-            <h3>Local-first</h3>
-            <p>Keeps metadata in SQLite and file operations on the current machine unless an optional cloud backend is configured.</p>
-          </article>
-          <article>
-            <h3>Google Drive planned</h3>
-            <p>Future cloud sync should use OAuth, dry-run planning, resumable transfers, and conflict-aware background queues.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="roadmap" class="section roadmap">
-        <div class="section-heading">
-          <p class="eyebrow">Next steps</p>
-          <h2>Planned as a real desktop project</h2>
-        </div>
-        <div class="module-grid">
-          <article>
-            <h3>Integrity audit</h3>
-            <p>Find missing, moved, changed, zero-byte, and duplicate-indexed files before repair actions.</p>
-          </article>
-          <article>
-            <h3>Import sessions</h3>
-            <p>Preview, copy, verify, and report imports from phones, camera cards, and staging folders.</p>
-          </article>
-          <article>
-            <h3>Smart albums</h3>
-            <p>Save filtered library views based on years, folders, file types, tags, blur scores, and review state.</p>
-          </article>
-          <article>
-            <h3>Reports and exports</h3>
-            <p>Create readable summaries, CSV reports, resized copies, ZIP bundles, and static HTML galleries.</p>
-          </article>
-          <article>
-            <h3>Cloud sync</h3>
-            <p>Add optional Google Drive synchronization without changing the default local-first workflow.</p>
-          </article>
+        <div class="workflow-grid">
+          <div>
+            <span>01</span>
+            <h3>Choose folders</h3>
+            <p>Confirm the library root, source folder, Phone Inbox, and optional mounted/cloud locations.</p>
+          </div>
+          <div>
+            <span>02</span>
+            <h3>Preview the plan</h3>
+            <p>Review what will be copied before running a sync or sorting phone uploads.</p>
+          </div>
+          <div>
+            <span>03</span>
+            <h3>Index locally</h3>
+            <p>Build the SQLite index so Dashboard, Gallery, duplicates, blur review, and AI metadata stay fast.</p>
+          </div>
+          <div>
+            <span>04</span>
+            <h3>Review and clean</h3>
+            <p>Queue cleanup decisions, export reports, and only delete after an explicit review step.</p>
+          </div>
         </div>
         <div class="inline-links">
-          <a href="https://github.com/Filipluke/PhotoSyncTool/blob/main/ROADMAP.md">Roadmap</a>
           <a href="SYSTEMD.md">Linux systemd</a>
-          <a href="GOOGLE_DRIVE_SYNC.md">Google Drive plan</a>
+          <a href="GOOGLE_DRIVE_SYNC.md">Google Drive setup</a>
+          <a href="https://github.com/Filipluke/PhotoSyncTool/tree/main/mobile/android">Android companion</a>
         </div>
       </section>
 
       <section id="screenshots" class="section band">
         <div class="section-heading">
           <p class="eyebrow">Screenshots</p>
-          <h2>Desktop views</h2>
+          <h2>The new desktop dashboard</h2>
         </div>
         <div class="screenshot-grid">
           <figure>
@@ -136,7 +149,7 @@
               onerror="this.hidden=true; this.nextElementSibling.hidden=false"
             >
             <a class="image-placeholder" href="screenshots/dashboard.svg" hidden>dashboard.svg</a>
-            <figcaption>Dashboard and library summary</figcaption>
+            <figcaption>Dashboard with sync health, cleanup pressure, and local index status</figcaption>
           </figure>
           <figure>
             <img
@@ -145,7 +158,7 @@
               onerror="this.hidden=true; this.nextElementSibling.hidden=false"
             >
             <a class="image-placeholder" href="screenshots/gallery.svg" hidden>gallery.svg</a>
-            <figcaption>Gallery with preview and metadata</figcaption>
+            <figcaption>Gallery with thumbnails, preview, metadata, and cleanup actions</figcaption>
           </figure>
           <figure>
             <img
@@ -154,24 +167,55 @@
               onerror="this.hidden=true; this.nextElementSibling.hidden=false"
             >
             <a class="image-placeholder" href="screenshots/duplicates.svg" hidden>duplicates.svg</a>
-            <figcaption>Duplicate review and safe delete flow</figcaption>
+            <figcaption>Duplicate review with side-by-side inspection and safe queueing</figcaption>
           </figure>
         </div>
       </section>
 
       <section id="download" class="section download">
         <div>
-          <p class="eyebrow">Distribution</p>
-          <h2>Install on Windows or Linux</h2>
+          <p class="eyebrow">Download</p>
+          <h2>Install on Windows or run from Python</h2>
           <p>
-            Release automation builds a Windows executable. Linux users can install the Python
-            package and run the same GUI or headless sync commands.
+            GitHub Releases provide the Windows executable. Linux and source users can install
+            the Python package and run the same GUI or headless service commands.
           </p>
         </div>
         <div class="command-box" aria-label="Install command">
+          <code>PhotoManagerPro.exe</code>
           <code>python -m pip install photosync-tool</code>
           <code>photo-manager-pro</code>
           <code>photo-manager-service install</code>
+        </div>
+      </section>
+
+      <section id="roadmap" class="section roadmap">
+        <div class="section-heading">
+          <p class="eyebrow">Roadmap</p>
+          <h2>Still alpha, but moving like a real desktop product</h2>
+        </div>
+        <div class="module-grid">
+          <article>
+            <h3>Cleaner release testing</h3>
+            <p>More clean-machine checks for the Windows executable, installer, and service modes.</p>
+          </article>
+          <article>
+            <h3>Integrity audit</h3>
+            <p>Find missing, moved, changed, zero-byte, and duplicate-indexed files before repair actions.</p>
+          </article>
+          <article>
+            <h3>Import sessions</h3>
+            <p>Preview, copy, verify, and report imports from phones, camera cards, and staging folders.</p>
+          </article>
+          <article>
+            <h3>Smarter albums</h3>
+            <p>Save filtered library views based on years, folders, file types, tags, blur scores, and review state.</p>
+          </article>
+        </div>
+        <div class="inline-links">
+          <a href="https://github.com/Filipluke/PhotoSyncTool/blob/main/ROADMAP.md">Full roadmap</a>
+          <a href="https://github.com/Filipluke/PhotoSyncTool/issues">Issues</a>
+          <a href="https://github.com/Filipluke/PhotoSyncTool/releases">Release history</a>
         </div>
       </section>
     </main>

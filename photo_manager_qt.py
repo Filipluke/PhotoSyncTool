@@ -8,6 +8,7 @@ import csv
 import io
 import json
 import queue
+import secrets
 import shutil
 import subprocess
 import sys
@@ -68,6 +69,13 @@ from photo_manager_google_drive import (
     default_credentials_path as default_google_credentials_path,
     default_token_path as default_google_token_path,
     write_desktop_credentials_file,
+)
+from photo_manager_lan import (
+    DEFAULT_LAN_INBOX,
+    DEFAULT_LAN_PORT,
+    MobileTransferServer,
+    default_lan_inbox,
+    lan_endpoint_urls,
 )
 from sort_photos_script import (
     ensure_file_stable,
@@ -227,6 +235,9 @@ class AppConfig:
     google_drive_parent_id: str
     google_drive_compute_hash: bool
     google_drive_overwrite: bool
+    lan_transfer_inbox: str
+    lan_transfer_port: int
+    lan_transfer_pairing_code: str
 
 
 @dataclass
@@ -700,9 +711,11 @@ class PhotoManagerWindow(QMainWindow):
         self.worker_thread: Optional[threading.Thread] = None
         self.worker_name = ""
         self.sync_service = SyncWatchService(self)
+        self.lan_server: Optional[MobileTransferServer] = None
         self.duplicate_scan_cancel_event = threading.Event()
         self.gallery_payload: List[tuple[GalleryItem, Optional[Path]]] = []
         self.duplicate_actions: List[DuplicateCandidate] = []
+        self.lan_recent_uploads: List[Path] = []
         self.next_action_target = "settings"
 
         self.sync_log_columns = ["ts", "mode", "src", "dst", "year", "flags", "status"]
@@ -710,7 +723,8 @@ class PhotoManagerWindow(QMainWindow):
         self.setWindowTitle("Photo Manager Pro")
         if not self.app_icon.isNull():
             self.setWindowIcon(self.app_icon)
-        self.resize(1240, 900)
+        self.resize(1440, 810)
+        self.setMinimumSize(1120, 680)
         self._build_ui()
         self._apply_theme()
         self._build_tray()
@@ -734,7 +748,7 @@ class PhotoManagerWindow(QMainWindow):
         root.setObjectName("appRoot")
         self.setCentralWidget(root)
         main_layout = QVBoxLayout(root)
-        main_layout.setContentsMargins(14, 4, 14, 14)
+        main_layout.setContentsMargins(0, 4, 0, 0)
         main_layout.setSpacing(0)
 
         main_layout.addWidget(self._build_command_bar())
@@ -749,9 +763,20 @@ class PhotoManagerWindow(QMainWindow):
         self.workspace_tabs.addTab(self._build_ai_tab(), "AI Metadata")
         self.workspace_tabs.addTab(self._build_compare_tab(), "Sync Plan")
         self.workspace_tabs.addTab(self._build_cloud_tab(), "Cloud Sync")
+        self.workspace_tabs.addTab(self._build_phone_connect_tab(), "Phone Connect")
         self.workspace_tabs.addTab(self._build_settings_tab(), "Settings")
         self.workspace_tabs.addTab(self._build_diagnostics_tab(), "Diagnostics")
-        main_layout.addWidget(self.workspace_tabs, stretch=1)
+        self.workspace_tabs.tabBar().hide()
+        self.workspace_tabs.currentChanged.connect(self._sync_nav_selection)
+
+        workspace_shell = QWidget()
+        workspace_shell.setObjectName("workspaceShell")
+        workspace_layout = QHBoxLayout(workspace_shell)
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(0)
+        workspace_layout.addWidget(self._build_sidebar())
+        workspace_layout.addWidget(self.workspace_tabs, stretch=1)
+        main_layout.addWidget(workspace_shell, stretch=1)
 
         self.save_settings_btn.clicked.connect(self.on_save_settings)
         self.use_google_drive_btn.clicked.connect(self.on_use_google_drive_root)
@@ -763,7 +788,7 @@ class PhotoManagerWindow(QMainWindow):
         self.open_settings_btn.clicked.connect(lambda: self.workspace_tabs.setCurrentWidget(self.settings_tab))
         self.open_diagnostics_btn.clicked.connect(lambda: self.workspace_tabs.setCurrentWidget(self.diagnostics_tab))
         self.next_action_btn.clicked.connect(self.on_next_best_action)
-        self.next_settings_btn.clicked.connect(lambda: self.workspace_tabs.setCurrentWidget(self.settings_tab))
+        self.next_settings_btn.clicked.connect(self.on_about)
         self.edit_schedule_btn.clicked.connect(self.on_edit_schedule)
         self.sync_hours_edit.textChanged.connect(lambda _text: self._refresh_schedule_summary())
         self.install_service_btn.clicked.connect(lambda: self.on_service_command("install"))
@@ -810,33 +835,52 @@ class PhotoManagerWindow(QMainWindow):
         self.google_upload_btn.clicked.connect(self.on_google_upload)
         self.google_plan_download_btn.clicked.connect(self.on_google_plan_download)
         self.google_download_btn.clicked.connect(self.on_google_download)
+        self.lan_start_btn.clicked.connect(self.on_start_lan_receiver)
+        self.lan_stop_btn.clicked.connect(self.on_stop_lan_receiver)
+        self.lan_open_inbox_btn.clicked.connect(self.on_open_lan_inbox)
+        self.lan_sync_inbox_btn.clicked.connect(self.on_sync_lan_inbox)
+        self.lan_generate_code_btn.clicked.connect(self.on_generate_lan_pairing_code)
+        self.lan_refresh_urls_btn.clicked.connect(self._refresh_lan_urls)
 
     def _build_command_bar(self) -> QWidget:
         bar = QWidget()
         bar.setObjectName("commandBar")
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setContentsMargins(26, 14, 18, 14)
         layout.setSpacing(12)
 
         title_block = QWidget()
-        title_layout = QVBoxLayout(title_block)
+        title_shell = QHBoxLayout(title_block)
+        title_shell.setContentsMargins(0, 0, 0, 0)
+        title_shell.setSpacing(12)
+
+        app_logo = QLabel()
+        app_logo.setObjectName("appLogo")
+        app_logo.setFixedSize(40, 40)
+        app_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if not self.app_icon.isNull():
+            app_logo.setPixmap(self.app_icon.pixmap(QSize(34, 34)))
+        else:
+            app_logo.setText("PM")
+
+        title_text = QWidget()
+        title_layout = QVBoxLayout(title_text)
         title_layout.setContentsMargins(0, 0, 0, 0)
-        title_layout.setSpacing(2)
+        title_layout.setSpacing(3)
         app_title = QLabel("Photo Manager Pro")
         app_title.setObjectName("appTitle")
-        app_subtitle = QLabel("Local photo sync, review, cleanup, and metadata search")
+        app_subtitle = QLabel("Local photo sync, review, cleanup, and metadata")
         app_subtitle.setObjectName("appSubtitle")
-        self.root_summary_label = QLabel("Library: not configured")
-        self.root_summary_label.setObjectName("pathInline")
         title_layout.addWidget(app_title)
         title_layout.addWidget(app_subtitle)
-        title_layout.addWidget(self.root_summary_label)
+        title_shell.addWidget(app_logo)
+        title_shell.addWidget(title_text)
 
         self.bg_status_label = QLabel("Watching paused")
         self.bg_status_label.setObjectName("statusPill")
         self.bg_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.bg_status_label.setFixedHeight(34)
-        self.bg_status_label.setMinimumWidth(132)
+        self.bg_status_label.setFixedHeight(42)
+        self.bg_status_label.setMinimumWidth(170)
         self.compare_btn = QPushButton("Preview Sync Plan")
         self.compare_btn.setObjectName("secondaryAction")
         self.run_sync_btn = QPushButton("Sync Now")
@@ -850,6 +894,13 @@ class PhotoManagerWindow(QMainWindow):
         self.open_diagnostics_btn = QPushButton("Diagnostics")
         self.open_diagnostics_btn.setObjectName("toolbarButton")
 
+        self.compare_btn.setIcon(self._standard_icon("SP_FileDialogDetailedView"))
+        self.run_sync_btn.setIcon(self._standard_icon("SP_MediaPlay"))
+        self.start_background_btn.setIcon(self._standard_icon("SP_BrowserReload"))
+        self.stop_background_btn.setIcon(self._standard_icon("SP_MediaStop"))
+        self.open_settings_btn.setIcon(self._standard_icon("SP_FileDialogContentsView"))
+        self.open_diagnostics_btn.setIcon(self._standard_icon("SP_MessageBoxInformation"))
+
         for btn in (
             self.compare_btn,
             self.run_sync_btn,
@@ -858,7 +909,7 @@ class PhotoManagerWindow(QMainWindow):
             self.open_settings_btn,
             self.open_diagnostics_btn,
         ):
-            btn.setMinimumHeight(36)
+            btn.setMinimumHeight(40)
 
         layout.addWidget(title_block, stretch=1)
         layout.addWidget(self.bg_status_label)
@@ -870,6 +921,87 @@ class PhotoManagerWindow(QMainWindow):
         layout.addWidget(self.open_settings_btn)
         layout.addWidget(self.open_diagnostics_btn)
         return bar
+
+    def _build_sidebar(self) -> QWidget:
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(258)
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(10, 18, 10, 12)
+        layout.setSpacing(8)
+
+        self.nav_buttons: List[QPushButton] = []
+        self._add_nav_button(layout, 0, "⌂", "Dashboard")
+        self._add_nav_button(layout, 1, "▧", "Gallery")
+        self._add_nav_button(layout, 2, "□", "Duplicates")
+        self._add_nav_button(layout, 3, "⌁", "Cleanup")
+        self._add_nav_button(layout, 4, "✧", "AI Metadata")
+        self._add_nav_button(layout, 5, "▤", "Sync Plan")
+        self._add_nav_button(layout, 6, "☁", "Cloud Sync")
+        self._add_nav_button(layout, 7, "▯", "Phone Connect")
+        layout.addWidget(self._sidebar_separator())
+        self._add_nav_button(layout, 8, "⚙", "Settings")
+        self._add_nav_button(layout, 9, "⚕", "Diagnostics")
+        layout.addStretch(1)
+
+        library_card = QWidget()
+        library_card.setObjectName("sidebarInfoCard")
+        card_layout = QVBoxLayout(library_card)
+        card_layout.setContentsMargins(14, 12, 14, 12)
+        card_layout.setSpacing(7)
+        info_title = QLabel("Library Location")
+        info_title.setObjectName("sidebarInfoTitle")
+        self.root_summary_label = QLabel("Library: not configured")
+        self.root_summary_label.setObjectName("sidebarInfoBody")
+        self.root_summary_label.setWordWrap(True)
+        card_layout.addWidget(info_title)
+        card_layout.addWidget(self.root_summary_label)
+        mini_actions = QGridLayout()
+        mini_actions.setContentsMargins(0, 6, 0, 0)
+        mini_actions.setHorizontalSpacing(6)
+        mini_actions.setVerticalSpacing(6)
+        self.check_updates_btn = QPushButton("Updates")
+        self.start_menu_shortcut_btn = QPushButton("Shortcut")
+        for btn in (self.check_updates_btn, self.start_menu_shortcut_btn):
+            btn.setObjectName("sidebarMiniButton")
+            btn.setMinimumHeight(32)
+        mini_actions.addWidget(self.check_updates_btn, 0, 0)
+        mini_actions.addWidget(self.start_menu_shortcut_btn, 0, 1)
+        card_layout.addLayout(mini_actions)
+        layout.addWidget(library_card)
+
+        self._sync_nav_selection(self.workspace_tabs.currentIndex())
+        return sidebar
+
+    def _add_nav_button(self, layout: QVBoxLayout, tab_index: int, icon: str, label: str) -> QPushButton:
+        button = QPushButton(f"{icon}   {label}")
+        button.setObjectName("navButton")
+        button.setCheckable(True)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setMinimumHeight(46)
+        button.setProperty("tabIndex", tab_index)
+        button.clicked.connect(lambda _checked=False, index=tab_index: self.workspace_tabs.setCurrentIndex(index))
+        self.nav_buttons.append(button)
+        layout.addWidget(button)
+        return button
+
+    def _sidebar_separator(self) -> QWidget:
+        line = QWidget()
+        line.setObjectName("sidebarSeparator")
+        line.setFixedHeight(1)
+        return line
+
+    def _sync_nav_selection(self, index: int) -> None:
+        if not hasattr(self, "nav_buttons"):
+            return
+        for button in self.nav_buttons:
+            button.setChecked(int(button.property("tabIndex")) == index)
+
+    def _standard_icon(self, name: str) -> QIcon:
+        icon_id = getattr(QStyle.StandardPixmap, name, None)
+        if icon_id is None:
+            return QIcon()
+        return self.style().standardIcon(icon_id)
 
     def _build_settings_tab(self) -> QWidget:
         self.settings_tab = QWidget()
@@ -1195,6 +1327,99 @@ class PhotoManagerWindow(QMainWindow):
         layout.addStretch(1)
         return self.cloud_tab
 
+    def _build_phone_connect_tab(self) -> QWidget:
+        self.phone_connect_tab = QWidget()
+        layout = QVBoxLayout(self.phone_connect_tab)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        header = self._page_header(
+            "Phone Connect",
+            "Receive phone photos over your local network, then sort the inbox into the desktop library.",
+        )
+        self.lan_refresh_urls_btn = QPushButton("Refresh URLs")
+        self.lan_refresh_urls_btn.setObjectName("secondaryAction")
+        self.lan_refresh_urls_btn.setIcon(self._standard_icon("SP_BrowserReload"))
+        header.addWidget(self.lan_refresh_urls_btn)
+        layout.addLayout(header)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+
+        receiver_group = QGroupBox("Receiver")
+        receiver_layout = QFormLayout(receiver_group)
+        receiver_layout.setSpacing(8)
+        self.lan_inbox_edit, inbox_row = self._path_row(self.on_browse_lan_inbox)
+        self.lan_port_edit = QLineEdit(str(DEFAULT_LAN_PORT))
+        self.lan_port_edit.setFixedWidth(110)
+        self.lan_pairing_code_edit = QLineEdit()
+        self.lan_pairing_code_edit.setMaxLength(12)
+        self.lan_pairing_code_edit.setFixedWidth(140)
+        self.lan_pairing_code_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lan_pairing_code_edit.setObjectName("pairingCode")
+        self.lan_generate_code_btn = QPushButton("New Code")
+        self.lan_generate_code_btn.setObjectName("toolbarButton")
+        self.lan_generate_code_btn.setIcon(self._standard_icon("SP_DialogResetButton"))
+        code_row = QWidget()
+        code_layout = QHBoxLayout(code_row)
+        code_layout.setContentsMargins(0, 0, 0, 0)
+        code_layout.setSpacing(6)
+        code_layout.addWidget(self.lan_pairing_code_edit)
+        code_layout.addWidget(self.lan_generate_code_btn)
+        code_layout.addStretch(1)
+        self.lan_status_label = QLabel("Receiver stopped")
+        self.lan_status_label.setObjectName("pathLabel")
+        self.lan_status_label.setWordWrap(True)
+        receiver_layout.addRow("Inbox", inbox_row)
+        receiver_layout.addRow("Port", self.lan_port_edit)
+        receiver_layout.addRow("Pairing code", code_row)
+        receiver_layout.addRow("Status", self.lan_status_label)
+
+        actions_group = QGroupBox("Actions")
+        actions_layout = QGridLayout(actions_group)
+        actions_layout.setHorizontalSpacing(8)
+        actions_layout.setVerticalSpacing(8)
+        self.lan_start_btn = QPushButton("Start Receiver")
+        self.lan_start_btn.setObjectName("primaryAction")
+        self.lan_start_btn.setIcon(self._standard_icon("SP_MediaPlay"))
+        self.lan_stop_btn = QPushButton("Stop")
+        self.lan_stop_btn.setObjectName("quietAction")
+        self.lan_stop_btn.setIcon(self._standard_icon("SP_MediaStop"))
+        self.lan_open_inbox_btn = QPushButton("Open Inbox")
+        self.lan_open_inbox_btn.setObjectName("secondaryAction")
+        self.lan_open_inbox_btn.setIcon(self._standard_icon("SP_DirOpenIcon"))
+        self.lan_sync_inbox_btn = QPushButton("Sort Inbox")
+        self.lan_sync_inbox_btn.setObjectName("secondaryAction")
+        self.lan_sync_inbox_btn.setIcon(self._standard_icon("SP_DialogApplyButton"))
+        actions_layout.addWidget(self.lan_start_btn, 0, 0)
+        actions_layout.addWidget(self.lan_stop_btn, 0, 1)
+        actions_layout.addWidget(self.lan_open_inbox_btn, 1, 0)
+        actions_layout.addWidget(self.lan_sync_inbox_btn, 1, 1)
+        self.lan_action_note = QLabel("Uploads land in the inbox first; sorting reuses the desktop sync rules.")
+        self.lan_action_note.setObjectName("pathLabel")
+        self.lan_action_note.setWordWrap(True)
+        actions_layout.addWidget(self.lan_action_note, 2, 0, 1, 2)
+
+        top_row.addWidget(receiver_group, stretch=3)
+        top_row.addWidget(actions_group, stretch=2)
+        layout.addLayout(top_row)
+
+        endpoint_group = QGroupBox("Connection")
+        endpoint_layout = QVBoxLayout(endpoint_group)
+        endpoint_layout.setSpacing(8)
+        self.lan_urls_view = QPlainTextEdit()
+        self.lan_urls_view.setReadOnly(True)
+        self.lan_urls_view.setMaximumHeight(132)
+        endpoint_layout.addWidget(self.lan_urls_view)
+        layout.addWidget(endpoint_group)
+
+        recent_group = QGroupBox("Recent Uploads")
+        recent_layout = QVBoxLayout(recent_group)
+        self.lan_recent_list = QListWidget()
+        recent_layout.addWidget(self.lan_recent_list)
+        layout.addWidget(recent_group, stretch=1)
+        return self.phone_connect_tab
+
     def _build_diagnostics_tab(self) -> QWidget:
         self.diagnostics_tab = QWidget()
         layout = QVBoxLayout(self.diagnostics_tab)
@@ -1236,31 +1461,55 @@ class PhotoManagerWindow(QMainWindow):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         table.verticalHeader().setVisible(False)
+        table.setAlternatingRowColors(True)
+        table.setShowGrid(False)
         return table
 
-    def _metric_card(self, title: str, value: str, caption: str) -> tuple[QWidget, QLabel, QLabel]:
+    def _metric_card(
+        self,
+        title: str,
+        value: str,
+        caption: str,
+        icon: str,
+        accent: str,
+    ) -> tuple[QWidget, QLabel, QLabel]:
         card = QWidget()
         card.setObjectName("metricCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(4)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(12)
+        icon_label = QLabel(icon)
+        icon_label.setObjectName("metricIcon")
+        icon_label.setFixedSize(44, 44)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_label.setStyleSheet(
+            f"background: {accent}; border: 1px solid {accent}; border-radius: 22px; color: #ffffff;"
+        )
         title_label = QLabel(title)
         title_label.setObjectName("metricTitle")
+        title_label.setWordWrap(True)
+        top_row.addWidget(icon_label)
+        top_row.addWidget(title_label, stretch=1)
+        layout.addLayout(top_row)
         value_label = QLabel(value)
         value_label.setObjectName("metricValue")
         caption_label = QLabel(caption)
         caption_label.setObjectName("metricCaption")
         caption_label.setWordWrap(True)
-        layout.addWidget(title_label)
         layout.addWidget(value_label)
         layout.addWidget(caption_label)
+        layout.addStretch(1)
         return card, value_label, caption_label
 
     def _build_dashboard_tab(self) -> QWidget:
         self.dashboard_tab = QWidget()
+        self.dashboard_tab.setObjectName("dashboardTab")
         layout = QVBoxLayout(self.dashboard_tab)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(12)
+        layout.setContentsMargins(24, 22, 30, 12)
+        layout.setSpacing(16)
 
         header = self._page_header(
             "Library Dashboard",
@@ -1268,89 +1517,264 @@ class PhotoManagerWindow(QMainWindow):
         )
         self.dashboard_refresh_btn = QPushButton("Refresh")
         self.dashboard_refresh_btn.setObjectName("secondaryAction")
+        self.dashboard_refresh_btn.setIcon(self._standard_icon("SP_BrowserReload"))
         self.dashboard_export_btn = QPushButton("Export Report")
         self.dashboard_export_btn.setObjectName("secondaryAction")
+        self.dashboard_export_btn.setIcon(self._standard_icon("SP_DialogSaveButton"))
         self.about_btn = QPushButton("About")
-        self.check_updates_btn = QPushButton("Check Updates")
-        self.start_menu_shortcut_btn = QPushButton("Start Menu Shortcut")
-        for btn in (self.about_btn, self.check_updates_btn, self.start_menu_shortcut_btn):
-            btn.setObjectName("toolbarButton")
+        self.about_btn.setIcon(self._standard_icon("SP_MessageBoxInformation"))
+        self.about_btn.setObjectName("toolbarButton")
         header.addWidget(self.dashboard_refresh_btn)
         header.addWidget(self.dashboard_export_btn)
         header.addWidget(self.about_btn)
-        header.addWidget(self.check_updates_btn)
-        header.addWidget(self.start_menu_shortcut_btn)
         layout.addLayout(header)
 
         metrics = QGridLayout()
         metrics.setHorizontalSpacing(12)
         metrics.setVerticalSpacing(12)
-        total_card, self.metric_total_files, _ = self._metric_card("Media Files", "-", "Indexed library items")
-        present_card, self.metric_present_files, _ = self._metric_card("Ready Files", "-", "Currently present in library")
-        ai_card, self.metric_ai_count, _ = self._metric_card("AI Metadata", "-", "Captions, tags, and OCR rows")
-        blur_card, self.metric_blur_count, _ = self._metric_card("Blur Review", "-", "Candidate photos to inspect")
-        queue_card, self.metric_queue_count, _ = self._metric_card("Cleanup Queue", "-", "Files waiting for review")
-        errors_card, self.metric_error_count, _ = self._metric_card("Sync Errors", "-", "Events needing attention")
+        total_card, self.metric_total_files, _ = self._metric_card(
+            "Media Files",
+            "0",
+            "Indexed library items",
+            "▧",
+            "#0ea5e9",
+        )
+        present_card, self.metric_present_files, _ = self._metric_card(
+            "Ready Files",
+            "0",
+            "Currently present in library",
+            "✓",
+            "#14b8a6",
+        )
+        ai_card, self.metric_ai_count, _ = self._metric_card(
+            "AI Metadata",
+            "0",
+            "Captions, tags, and OCR rows",
+            "AI",
+            "#8b5cf6",
+        )
+        blur_card, self.metric_blur_count, _ = self._metric_card(
+            "Blur Review",
+            "0",
+            "Candidate photos to inspect",
+            "⌗",
+            "#f97316",
+        )
+        queue_card, self.metric_queue_count, _ = self._metric_card(
+            "Cleanup Queue",
+            "0",
+            "Files waiting for review",
+            "⌫",
+            "#d97706",
+        )
+        errors_card, self.metric_error_count, _ = self._metric_card(
+            "Sync Errors",
+            "0",
+            "Events needing attention",
+            "!",
+            "#ef4444",
+        )
         for col, card in enumerate((total_card, present_card, ai_card, blur_card, queue_card, errors_card)):
             metrics.addWidget(card, 0, col)
             metrics.setColumnStretch(col, 1)
         layout.addLayout(metrics)
 
         next_card = QWidget()
-        next_card.setObjectName("nextActionCard")
+        next_card.setObjectName("libraryIndexCard")
         next_layout = QHBoxLayout(next_card)
-        next_layout.setContentsMargins(16, 14, 16, 14)
-        next_layout.setSpacing(14)
+        next_layout.setContentsMargins(26, 22, 26, 22)
+        next_layout.setSpacing(28)
+        library_art = QLabel("▧\n⌕")
+        library_art.setObjectName("libraryIndexArt")
+        library_art.setFixedSize(150, 118)
+        library_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         next_text = QWidget()
         next_text_layout = QVBoxLayout(next_text)
         next_text_layout.setContentsMargins(0, 0, 0, 0)
-        next_text_layout.setSpacing(3)
-        self.next_action_title_label = QLabel("Next Best Action")
+        next_text_layout.setSpacing(8)
+        self.next_action_title_label = QLabel("Build your library index")
         self.next_action_title_label.setObjectName("nextActionTitle")
-        self.next_action_body_label = QLabel("Configure folders, rebuild the library index, then review cleanup candidates.")
+        self.next_action_body_label = QLabel(
+            "No indexed media yet. Confirm folders in Settings, then build the library index."
+        )
         self.next_action_body_label.setObjectName("nextActionBody")
         self.next_action_body_label.setWordWrap(True)
         next_text_layout.addWidget(self.next_action_title_label)
         next_text_layout.addWidget(self.next_action_body_label)
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 12, 0, 0)
+        action_row.setSpacing(10)
         self.next_action_btn = QPushButton("Open Settings")
         self.next_action_btn.setObjectName("primaryAction")
-        self.next_settings_btn = QPushButton("Settings")
-        self.next_settings_btn.setObjectName("toolbarButton")
+        self.next_action_btn.setIcon(self._standard_icon("SP_FileDialogContentsView"))
+        self.next_settings_btn = QPushButton("Learn how it works")
+        self.next_settings_btn.setObjectName("quietAction")
+        self.next_settings_btn.setIcon(self._standard_icon("SP_MessageBoxQuestion"))
+        action_row.addWidget(self.next_action_btn)
+        action_row.addWidget(self.next_settings_btn)
+        action_row.addStretch(1)
+        next_text_layout.addLayout(action_row)
+        next_text_layout.addStretch(1)
+
+        separator = QWidget()
+        separator.setObjectName("verticalSeparator")
+        separator.setFixedWidth(1)
+
+        overview = self._build_system_overview()
+        next_layout.addWidget(library_art)
         next_layout.addWidget(next_text, stretch=1)
-        next_layout.addWidget(self.next_action_btn)
-        next_layout.addWidget(self.next_settings_btn)
+        next_layout.addWidget(separator)
+        next_layout.addWidget(overview, stretch=1)
         layout.addWidget(next_card)
 
-        self.dashboard_summary_label = QLabel("Index dashboard not loaded yet.")
-        self.dashboard_summary_label.setObjectName("pathLabel")
-        layout.addWidget(self.dashboard_summary_label)
-
-        split = QSplitter()
-        split.setChildrenCollapsible(False)
         self.dashboard_year_table = self._new_table(["Year", "Files"])
         self.dashboard_folder_table = self._new_table(["Folder", "Files", "Size"])
         self.dashboard_events_table = self._new_table(["Time", "Mode", "Status", "Source", "Target"])
-        years_panel = self._table_panel("Years", self.dashboard_year_table)
-        folders_panel = self._table_panel("Top Folders", self.dashboard_folder_table)
-        events_panel = self._table_panel("Recent Sync Events", self.dashboard_events_table)
-        split.addWidget(years_panel)
-        split.addWidget(folders_panel)
-        split.addWidget(events_panel)
-        split.setSizes([180, 330, 470])
-        layout.addWidget(split, stretch=1)
+        years_panel, self.dashboard_year_empty = self._dashboard_panel(
+            "Years",
+            "▣",
+            self.dashboard_year_table,
+            "No data yet",
+            "Years will appear here once the library is indexed.",
+        )
+        folders_panel, self.dashboard_folder_empty = self._dashboard_panel(
+            "Top Folders",
+            "▱",
+            self.dashboard_folder_table,
+            "No folders yet",
+            "Your top folders will be shown here after indexing.",
+        )
+        events_panel, self.dashboard_events_empty = self._dashboard_panel(
+            "Recent Sync Events",
+            "↻",
+            self.dashboard_events_table,
+            "No events yet",
+            "Sync activity will appear here once syncing begins.",
+        )
+
+        lower_grid = QGridLayout()
+        lower_grid.setHorizontalSpacing(12)
+        lower_grid.setVerticalSpacing(12)
+        lower_grid.addWidget(years_panel, 0, 0)
+        lower_grid.addWidget(folders_panel, 0, 1)
+        lower_grid.addWidget(events_panel, 0, 2)
+        lower_grid.setColumnStretch(0, 1)
+        lower_grid.setColumnStretch(1, 1)
+        lower_grid.setColumnStretch(2, 2)
+        layout.addLayout(lower_grid, stretch=1)
+
+        self.dashboard_summary_label = QLabel("Index dashboard not loaded yet.")
+        self.dashboard_summary_label.setObjectName("dashboardStatusLine")
+        self.dashboard_summary_label.setVisible(False)
+        layout.addWidget(self.dashboard_summary_label)
+        layout.addWidget(self._build_dashboard_footer())
+        self._set_dashboard_empty_states()
         return self.dashboard_tab
 
-    def _table_panel(self, title: str, table: QTableWidget) -> QWidget:
+    def _build_system_overview(self) -> QWidget:
+        panel = QWidget()
+        panel.setObjectName("systemOverview")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        title = QLabel("System Overview")
+        title.setObjectName("systemOverviewTitle")
+        layout.addWidget(title)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 2, 0, 0)
+        grid.setHorizontalSpacing(24)
+        grid.setVerticalSpacing(12)
+        self.dashboard_overview_values: Dict[str, QLabel] = {}
+        items = [
+            ("Files", "files", "#14b8a6"),
+            ("Present", "present", "#14b8a6"),
+            ("AI metadata", "ai", "#14b8a6"),
+            ("Blur candidates", "blur", "#14b8a6"),
+            ("Delete queue", "queue", "#14b8a6"),
+            ("Sync errors", "errors", "#ef4444"),
+        ]
+        for index, (label, key, color) in enumerate(items):
+            row = index % 3
+            column = (index // 3) * 2
+            item = self._overview_item(label, key, color)
+            grid.addWidget(item, row, column, 1, 2)
+        layout.addLayout(grid)
+        layout.addStretch(1)
+        return panel
+
+    def _overview_item(self, label: str, key: str, color: str) -> QWidget:
+        item = QWidget()
+        item.setObjectName("overviewItem")
+        layout = QHBoxLayout(item)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        dot = QLabel()
+        dot.setObjectName("overviewDot")
+        dot.setFixedSize(8, 8)
+        dot.setStyleSheet(f"background: {color}; border-radius: 4px;")
+        name = QLabel(f"{label}:")
+        name.setObjectName("overviewLabel")
+        value = QLabel("0")
+        value.setObjectName("overviewValue")
+        self.dashboard_overview_values[key] = value
+        layout.addWidget(dot)
+        layout.addWidget(name)
+        layout.addWidget(value)
+        layout.addStretch(1)
+        return item
+
+    def _build_dashboard_footer(self) -> QWidget:
+        footer = QWidget()
+        footer.setObjectName("dashboardFooter")
+        layout = QHBoxLayout(footer)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        privacy = QLabel("All data is stored locally and never leaves your device.")
+        privacy.setObjectName("footerText")
+        version = QLabel(f"Photo Manager Pro v{self._app_version()}")
+        version.setObjectName("footerText")
+        layout.addWidget(privacy)
+        layout.addStretch(1)
+        layout.addWidget(version)
+        return footer
+
+    def _dashboard_panel(
+        self,
+        title: str,
+        icon: str,
+        table: QTableWidget,
+        empty_title: str,
+        empty_body: str,
+    ) -> tuple[QWidget, QLabel]:
         panel = QWidget()
         panel.setObjectName("tablePanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(0)
+        panel_header = QWidget()
+        panel_header.setObjectName("tablePanelHeader")
+        header_layout = QHBoxLayout(panel_header)
+        header_layout.setContentsMargins(16, 13, 16, 12)
+        header_layout.setSpacing(9)
+        icon_label = QLabel(icon)
+        icon_label.setObjectName("panelIcon")
+        icon_label.setFixedSize(22, 22)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label = QLabel(title)
         title_label.setObjectName("sectionTitle")
-        layout.addWidget(title_label)
-        layout.addWidget(table, stretch=1)
-        return panel
+        header_layout.addWidget(icon_label)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch(1)
+        layout.addWidget(panel_header)
+        table.setMinimumHeight(46)
+        layout.addWidget(table)
+        empty_label = QLabel(f"{empty_title}\n{empty_body}")
+        empty_label.setObjectName("tableEmptyState")
+        empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_label.setWordWrap(True)
+        layout.addWidget(empty_label, stretch=1)
+        return panel, empty_label
 
     def _build_gallery_tab(self) -> QWidget:
         tab = QWidget()
@@ -1574,14 +1998,23 @@ class PhotoManagerWindow(QMainWindow):
     def _apply_theme(self) -> None:
         self.setStyleSheet(
             """
-            QMainWindow { background: #07090d; color: #e5edf7; }
-            QWidget#appRoot { background: #07090d; color: #e5edf7; }
-            QWidget { color: #d8e2ee; font-size: 12px; }
-            QLabel { color: #d8e2ee; }
+            QMainWindow { background: #070b11; color: #edf5ff; }
+            QWidget#appRoot { background: #070b11; color: #edf5ff; }
+            QWidget#workspaceShell { background: #09111b; }
+            QWidget#dashboardTab { background: #09111b; }
+            QWidget { color: #d8e5f2; font-size: 12px; }
+            QLabel { color: #d8e5f2; }
             QWidget#commandBar {
-                background: #10131a;
-                border: 1px solid #2a3140;
-                border-radius: 8px;
+                background: #070b11;
+                border-bottom: 1px solid #1a2736;
+            }
+            QLabel#appLogo {
+                background: #0e2638;
+                border: 1px solid #0ea5e9;
+                border-radius: 9px;
+                color: #67e8f9;
+                font-size: 12px;
+                font-weight: 900;
             }
             QLabel#appTitle {
                 color: #f8fbff;
@@ -1589,21 +2022,74 @@ class PhotoManagerWindow(QMainWindow):
                 font-weight: 900;
             }
             QLabel#appSubtitle {
-                color: #92a4b8;
+                color: #9aabbd;
                 font-size: 12px;
                 font-weight: 600;
             }
-            QLabel#pathInline {
-                color: #8fa3ba;
-                font-size: 11px;
-            }
             QLabel#statusPill {
-                color: #fde68a;
-                background: #2f230d;
-                border: 1px solid #f59e0b;
-                border-radius: 999px;
-                padding: 6px 11px;
+                color: #fbbf24;
+                background: #2a1d08;
+                border: 1px solid #7c4b10;
+                border-radius: 8px;
+                padding: 6px 14px;
+                font-weight: 900;
+            }
+            QWidget#sidebar {
+                background: #09111b;
+                border-right: 1px solid #1a2736;
+            }
+            QPushButton#navButton {
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: 7px;
+                color: #cbd7e5;
+                font-size: 14px;
+                font-weight: 750;
+                padding: 10px 15px;
+                text-align: left;
+            }
+            QPushButton#navButton:hover {
+                background: #101b27;
+                border-color: #203247;
+                color: #f8fbff;
+            }
+            QPushButton#navButton:checked {
+                background: #0c3548;
+                border: 1px solid #0f7494;
+                color: #f1fbff;
+            }
+            QWidget#sidebarSeparator {
+                background: #1b2a39;
+                margin-top: 8px;
+                margin-bottom: 8px;
+            }
+            QWidget#sidebarInfoCard {
+                background: #0d1723;
+                border: 1px solid #203247;
+                border-radius: 8px;
+            }
+            QLabel#sidebarInfoTitle {
+                color: #9fb0c2;
+                font-size: 11px;
                 font-weight: 800;
+            }
+            QLabel#sidebarInfoBody {
+                color: #c7d2df;
+                font-size: 11px;
+                line-height: 140%;
+            }
+            QPushButton#sidebarMiniButton {
+                background: #101b27;
+                border: 1px solid #25384c;
+                border-radius: 6px;
+                color: #b9c8d8;
+                font-size: 11px;
+                font-weight: 800;
+                padding: 5px 8px;
+            }
+            QPushButton#sidebarMiniButton:hover {
+                border-color: #14b8a6;
+                color: #ecfeff;
             }
             QScrollArea#settingsScroll {
                 border: none;
@@ -1613,13 +2099,13 @@ class PhotoManagerWindow(QMainWindow):
                 background: transparent;
             }
             QScrollBar:vertical {
-                background: #0b0f16;
+                background: #09111b;
                 border: none;
                 width: 12px;
                 margin: 0;
             }
             QScrollBar::handle:vertical {
-                background: #2f3b4d;
+                background: #2d3d51;
                 border-radius: 6px;
                 min-height: 28px;
             }
@@ -1630,29 +2116,29 @@ class PhotoManagerWindow(QMainWindow):
                 height: 0;
             }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: #0b0f16;
+                background: #09111b;
             }
             QLabel#pageTitle {
                 color: #f8fbff;
-                font-size: 20px;
+                font-size: 22px;
                 font-weight: 900;
             }
             QLabel#pageSubtitle {
-                color: #8fa3ba;
-                font-size: 12px;
-                font-weight: 600;
+                color: #a7b4c4;
+                font-size: 13px;
+                font-weight: 500;
             }
             QLabel#sectionTitle {
-                color: #c4d2e3;
-                font-size: 12px;
+                color: #edf5ff;
+                font-size: 14px;
                 font-weight: 900;
             }
             QGroupBox {
-                border: 1px solid #2a3140;
+                border: 1px solid #203247;
                 border-radius: 8px;
                 margin-top: 14px;
                 font-weight: 800;
-                background: #10131a;
+                background: #101925;
                 color: #e5edf7;
             }
             QGroupBox::title {
@@ -1660,19 +2146,30 @@ class PhotoManagerWindow(QMainWindow):
                 left: 12px;
                 padding: 0 7px;
                 color: #5eead4;
-                background: #10131a;
+                background: #101925;
             }
             QLineEdit, QComboBox, QListWidget, QTableWidget, QPlainTextEdit {
-                border: 1px solid #2a3140;
+                border: 1px solid #203247;
                 border-radius: 7px;
                 padding: 6px;
-                background: #0b0f16;
-                color: #e5edf7;
+                background: #0c141f;
+                color: #eef3f8;
                 selection-background-color: #0f766e;
                 selection-color: #f8fbff;
             }
+            QLineEdit#pairingCode {
+                color: #fff7ed;
+                background: #2a1a10;
+                border-color: #f97316;
+                font-size: 18px;
+                font-weight: 900;
+            }
             QLineEdit:focus, QComboBox:focus, QListWidget:focus, QTableWidget:focus, QPlainTextEdit:focus {
                 border-color: #14b8a6;
+            }
+            QSplitter::handle {
+                background: #1a2736;
+                margin: 2px;
             }
             QTabWidget#workspaceTabs::pane {
                 border: none;
@@ -1688,119 +2185,197 @@ class PhotoManagerWindow(QMainWindow):
                 background: transparent;
             }
             QTabWidget#workspaceTabs QTabBar::tab {
-                background: #0b0f16;
-                color: #8fa3ba;
+                background: #0c141f;
+                color: #9fb0c2;
                 padding: 7px 14px;
-                border: 1px solid #2a3140;
+                border: 1px solid #203247;
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
                 margin-right: 4px;
                 font-weight: 800;
             }
             QTabWidget#workspaceTabs QTabBar::tab:selected {
-                background: #10131a;
+                background: #101925;
                 color: #5eead4;
-                border-bottom-color: #10131a;
+                border-bottom-color: #101925;
             }
             QTabWidget#workspaceTabs QTabBar::tab:hover {
                 color: #f8fbff;
-                background: #14202c;
+                background: #132233;
             }
             QTableWidget {
-                gridline-color: #252d3b;
-                alternate-background-color: #0f151f;
+                gridline-color: #1f3042;
+                alternate-background-color: #101a26;
+                border-top-left-radius: 0;
+                border-top-right-radius: 0;
             }
             QHeaderView::section {
-                background: #151c27;
-                color: #c4d2e3;
-                padding: 7px;
+                background: #172434;
+                color: #bcc9d9;
+                padding: 9px;
                 border: none;
-                border-right: 1px solid #2a3140;
-                font-weight: 900;
+                border-right: 1px solid #203247;
+                font-weight: 800;
             }
             QTableWidget::item { padding: 6px; }
             QListWidget { font-family: 'Segoe UI', sans-serif; }
             QLabel#pathLabel {
-                color: #a7b8cc;
+                color: #a9b8c8;
                 padding: 5px 7px;
-                border: 1px solid #2a3140;
+                border: 1px solid #203247;
                 border-radius: 7px;
-                background: #0b0f16;
+                background: #0c141f;
             }
-            QWidget#metricCard, QWidget#nextActionCard, QWidget#tablePanel, QWidget#inspectorPanel {
-                background: #10131a;
-                border: 1px solid #2a3140;
+            QWidget#metricCard, QWidget#libraryIndexCard, QWidget#tablePanel, QWidget#inspectorPanel {
+                background: #101925;
+                border: 1px solid #203247;
                 border-radius: 8px;
             }
+            QWidget#metricCard {
+                min-height: 116px;
+            }
+            QLabel#metricIcon {
+                font-size: 17px;
+                font-weight: 900;
+            }
             QLabel#metricTitle {
-                color: #8fa3ba;
-                font-size: 11px;
+                color: #dbe8f6;
+                font-size: 13px;
                 font-weight: 900;
             }
             QLabel#metricValue {
                 color: #f8fbff;
-                font-size: 26px;
+                font-size: 29px;
                 font-weight: 900;
             }
             QLabel#metricCaption {
-                color: #8fa3ba;
-                font-size: 11px;
+                color: #94a5b7;
+                font-size: 12px;
+            }
+            QLabel#libraryIndexArt {
+                background: #0b2233;
+                border: 1px solid #1e4661;
+                border-radius: 8px;
+                color: #7dd3fc;
+                font-size: 34px;
+                font-weight: 900;
             }
             QLabel#nextActionTitle {
                 color: #f8fbff;
-                font-size: 15px;
+                font-size: 21px;
                 font-weight: 900;
             }
             QLabel#nextActionBody {
-                color: #a7b8cc;
-                font-size: 12px;
+                color: #b5c2d1;
+                font-size: 13px;
             }
-            QPushButton {
-                border: 1px solid #2a3140;
-                border-radius: 7px;
-                padding: 7px 13px;
-                background: #141a24;
-                color: #d8e2ee;
-                font-weight: 800;
+            QWidget#verticalSeparator {
+                background: #26384b;
             }
-            QPushButton:hover { background: #1b2635; border-color: #14b8a6; color: #f8fbff; }
-            QPushButton:pressed { background: #0b0f16; }
-            QPushButton#primaryAction {
-                background: #14b8a6;
-                border-color: #14b8a6;
-                color: #041312;
+            QWidget#systemOverview {
+                background: transparent;
+            }
+            QLabel#systemOverviewTitle {
+                color: #dfe9f6;
                 font-size: 14px;
                 font-weight: 900;
             }
-            QPushButton#primaryAction:hover { background: #2dd4bf; border-color: #2dd4bf; color: #041312; }
-            QPushButton#secondaryAction {
-                background: #0b2535;
-                border-color: #38bdf8;
-                color: #bae6fd;
+            QLabel#overviewLabel, QLabel#overviewValue {
+                color: #c5d2e0;
+                font-size: 13px;
+            }
+            QLabel#overviewValue {
+                color: #edf5ff;
+                font-weight: 800;
+            }
+            QWidget#tablePanel {
+                background: #101925;
+            }
+            QWidget#tablePanelHeader {
+                background: #101925;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+            }
+            QLabel#panelIcon {
+                color: #c8d5e5;
+                font-size: 16px;
                 font-weight: 900;
             }
-            QPushButton#secondaryAction:hover { background: #123449; color: #e0f2fe; }
+            QLabel#tableEmptyState {
+                color: #a0afc1;
+                font-size: 13px;
+                padding: 26px 20px;
+                background: #0e1722;
+                border-bottom-left-radius: 8px;
+                border-bottom-right-radius: 8px;
+            }
+            QLabel#dashboardStatusLine {
+                color: #fbbf24;
+                background: #291d0b;
+                border: 1px solid #7c4b10;
+                border-radius: 7px;
+                padding: 6px 10px;
+            }
+            QLabel#footerText {
+                color: #8e9daf;
+                font-size: 12px;
+            }
+            QPushButton {
+                border: 1px solid #26384c;
+                border-radius: 7px;
+                padding: 8px 14px;
+                background: #111c28;
+                color: #d8e2ee;
+                font-weight: 800;
+            }
+            QPushButton:hover { background: #172739; border-color: #14b8a6; color: #f8fbff; }
+            QPushButton:pressed { background: #0c141f; }
+            QPushButton:disabled { color: #657184; background: #0d141d; border-color: #1c2836; }
+            QPushButton#primaryAction {
+                background: #14b8b6;
+                border-color: #19d3d0;
+                color: #031314;
+                font-size: 14px;
+                font-weight: 900;
+            }
+            QPushButton#primaryAction:hover { background: #22d3ee; border-color: #67e8f9; color: #031314; }
+            QPushButton#secondaryAction {
+                background: #0b2233;
+                border-color: #0e5f82;
+                color: #d8f3ff;
+                font-weight: 900;
+            }
+            QPushButton#secondaryAction:hover { background: #0e3147; border-color: #38bdf8; color: #f0fbff; }
             QPushButton#quietAction {
-                background: #0b0f16;
-                border-color: #2a3140;
-                color: #a7b8cc;
+                background: #0b1119;
+                border-color: #28394d;
+                color: #c2cfdd;
+            }
+            QPushButton#quietAction:hover {
+                background: #111c28;
+                border-color: #4b5d70;
+                color: #f8fbff;
             }
             QPushButton#cautionAction {
-                background: #2f230d;
-                border-color: #f59e0b;
+                background: #2d210b;
+                border-color: #b86d0d;
                 color: #fde68a;
             }
             QPushButton#cautionAction:hover { background: #432f0b; color: #fffbeb; }
             QPushButton#dangerAction {
-                background: #7f1d1d;
+                background: #5f1717;
                 border-color: #ef4444;
                 color: #fee2e2;
             }
             QPushButton#dangerAction:hover { background: #991b1b; color: #ffffff; }
             QPushButton#toolbarButton {
-                background: #0b0f16;
-                border-color: #2a3140;
-                color: #c4d2e3;
+                background: #0b1119;
+                border-color: #26384c;
+                color: #d0dbe8;
+            }
+            QPushButton#toolbarButton:hover {
+                background: #111c28;
+                border-color: #14b8a6;
             }
             QCheckBox { padding: 3px; color: #c4d2e3; }
             """
@@ -1851,6 +2426,9 @@ class PhotoManagerWindow(QMainWindow):
     def _quit_from_tray(self) -> None:
         self._allow_real_close = True
         self.sync_service.stop()
+        if self.lan_server is not None:
+            self.lan_server.stop()
+            self.lan_server = None
         if self.tray_icon is not None:
             self.tray_icon.hide()
         app = QApplication.instance()
@@ -1888,7 +2466,13 @@ class PhotoManagerWindow(QMainWindow):
             google_drive_parent_id="",
             google_drive_compute_hash=False,
             google_drive_overwrite=False,
+            lan_transfer_inbox=DEFAULT_LAN_INBOX,
+            lan_transfer_port=DEFAULT_LAN_PORT,
+            lan_transfer_pairing_code=self._new_pairing_code(),
         )
+
+    def _new_pairing_code(self) -> str:
+        return str(100000 + secrets.randbelow(900000))
 
     def _load_config(self) -> AppConfig:
         cfg = self._default_config()
@@ -1940,6 +2524,10 @@ class PhotoManagerWindow(QMainWindow):
         self.google_parent_id_edit.setText(str(getattr(cfg, "google_drive_parent_id", "") or ""))
         self.google_compute_hash_check.setChecked(bool(getattr(cfg, "google_drive_compute_hash", False)))
         self.google_overwrite_check.setChecked(bool(getattr(cfg, "google_drive_overwrite", False)))
+        self.lan_inbox_edit.setText(str(getattr(cfg, "lan_transfer_inbox", DEFAULT_LAN_INBOX) or DEFAULT_LAN_INBOX))
+        self.lan_port_edit.setText(str(getattr(cfg, "lan_transfer_port", DEFAULT_LAN_PORT) or DEFAULT_LAN_PORT))
+        pairing_code = str(getattr(cfg, "lan_transfer_pairing_code", "") or self._new_pairing_code())
+        self.lan_pairing_code_edit.setText(pairing_code)
         self._load_google_credentials_fields()
         self._refresh_google_status_label()
         if sys.platform != "win32":
@@ -1948,9 +2536,11 @@ class PhotoManagerWindow(QMainWindow):
         if hasattr(self, "root_summary_label"):
             root_label = self._compact_path_label(str(cfg.root_dir))
             source_label = self._compact_path_label(str(cfg.source_dir))
-            self.root_summary_label.setText(f"Library: {root_label} | Source: {source_label}")
+            self.root_summary_label.setText(f"Library: {root_label}\nSource: {source_label}")
             self.root_summary_label.setToolTip(f"Library: {cfg.root_dir}\nSource: {cfg.source_dir}")
         self._refresh_google_drive_status()
+        self._refresh_lan_status()
+        self._refresh_lan_urls()
 
     def _compact_path_label(self, raw: str) -> str:
         text = str(raw).strip()
@@ -2074,6 +2664,55 @@ class PhotoManagerWindow(QMainWindow):
         self.google_drive_status_label.setToolTip(f"Checked:\n{checked}")
         self.open_google_drive_btn.setEnabled(False)
 
+    def _lan_port(self) -> int:
+        port = self._parse_int(self.lan_port_edit.text(), "Phone Connect port", 1)
+        if port > 65535:
+            raise ValueError("Phone Connect port must be between 1 and 65535")
+        return port
+
+    def _resolve_lan_inbox(self, cfg: RuntimeConfig) -> Path:
+        raw = self.lan_inbox_edit.text().strip()
+        if not raw:
+            return default_lan_inbox(cfg.root).resolve()
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = (cfg.root / path).resolve()
+        else:
+            path = path.resolve()
+        return path
+
+    def _refresh_lan_status(self) -> None:
+        if self.lan_server is not None and self.lan_server.running:
+            self.lan_status_label.setText(
+                f"Receiver active on port {self.lan_server.actual_port}. Inbox: {self.lan_server.incoming_dir}"
+            )
+            self.lan_status_label.setStyleSheet(
+                "color: #bbf7d0; background: #062f20; border: 1px solid #22c55e; "
+                "border-radius: 7px; padding: 5px 7px; font-weight: 800;"
+            )
+        else:
+            self.lan_status_label.setText("Receiver stopped")
+            self.lan_status_label.setStyleSheet(
+                "color: #fef3c7; background: #31230a; border: 1px solid #f59e0b; "
+                "border-radius: 7px; padding: 5px 7px; font-weight: 800;"
+            )
+
+    def _refresh_lan_urls(self) -> None:
+        try:
+            port = self.lan_server.actual_port if self.lan_server is not None and self.lan_server.running else self._lan_port()
+            urls = lan_endpoint_urls(port)
+        except Exception as exc:
+            self.lan_urls_view.setPlainText(f"Port error: {exc}")
+            return
+        code = self.lan_pairing_code_edit.text().strip()
+        lines = []
+        for url in urls:
+            lines.append(url)
+        if code:
+            lines.append("")
+            lines.append(f"Pairing code: {code}")
+        self.lan_urls_view.setPlainText("\n".join(lines))
+
     def _build_config_from_widgets(self) -> AppConfig:
         return AppConfig(
             root_dir=self.root_edit.text().strip(),
@@ -2105,6 +2744,9 @@ class PhotoManagerWindow(QMainWindow):
             google_drive_parent_id=self.google_parent_id_edit.text().strip(),
             google_drive_compute_hash=self.google_compute_hash_check.isChecked(),
             google_drive_overwrite=self.google_overwrite_check.isChecked(),
+            lan_transfer_inbox=self.lan_inbox_edit.text().strip() or DEFAULT_LAN_INBOX,
+            lan_transfer_port=self._parse_int(self.lan_port_edit.text(), "Phone Connect port", 1),
+            lan_transfer_pairing_code=self.lan_pairing_code_edit.text().strip(),
         )
 
     def _resolve_runtime_config(self) -> RuntimeConfig:
@@ -2484,7 +3126,7 @@ class PhotoManagerWindow(QMainWindow):
 
             return metadata.version("photosync-tool")
         except Exception:
-            return "0.1.6"
+            return "0.2.0"
 
     def _set_preview_image(self, label: QLabel, path: Path) -> None:
         pixmap = QPixmap()
@@ -2524,6 +3166,54 @@ class PhotoManagerWindow(QMainWindow):
             )
         )
 
+    def _format_count(self, value) -> str:
+        return f"{int(value or 0):,}"
+
+    def _set_dashboard_overview_counts(self, stats: Optional[dict] = None) -> None:
+        if not hasattr(self, "dashboard_overview_values"):
+            return
+        values = {
+            "files": 0,
+            "present": 0,
+            "ai": 0,
+            "blur": 0,
+            "queue": 0,
+            "errors": 0,
+        }
+        if stats is not None:
+            values.update(
+                {
+                    "files": int(stats.get("total", 0) or 0),
+                    "present": int(stats.get("present", 0) or 0),
+                    "ai": int(stats.get("ai_count", 0) or 0),
+                    "blur": int(stats.get("blur_pending", 0) or 0),
+                    "queue": int(stats.get("delete_queued", 0) or 0),
+                    "errors": int(stats.get("sync_errors", 0) or 0),
+                }
+            )
+        for key, label in self.dashboard_overview_values.items():
+            label.setText(self._format_count(values.get(key, 0)))
+
+    def _set_dashboard_empty_states(self) -> None:
+        empty_pairs = (
+            (self.dashboard_year_table, self.dashboard_year_empty),
+            (self.dashboard_folder_table, self.dashboard_folder_empty),
+            (self.dashboard_events_table, self.dashboard_events_empty),
+        )
+        for table, empty_label in empty_pairs:
+            is_empty = table.rowCount() == 0
+            empty_label.setVisible(is_empty)
+            header_height = table.horizontalHeader().height() or 36
+            if is_empty:
+                table.setMaximumHeight(header_height + 10)
+            else:
+                table.setMaximumHeight(16777215)
+
+    def _clear_dashboard_tables(self) -> None:
+        for table in (self.dashboard_year_table, self.dashboard_folder_table, self.dashboard_events_table):
+            table.setRowCount(0)
+        self._set_dashboard_empty_states()
+
     def on_dashboard_refresh(self) -> None:
         cfg = self._get_runtime_or_message()
         if cfg is None:
@@ -2531,23 +3221,30 @@ class PhotoManagerWindow(QMainWindow):
             self.next_action_title_label.setText("Finish Setup")
             self.next_action_body_label.setText("Open Settings and choose valid root and source folders before syncing.")
             self.next_action_btn.setText("Open Settings")
+            self._set_dashboard_overview_counts()
+            self._clear_dashboard_tables()
             return
         try:
             stats = dashboard_stats(cfg.root)
         except Exception as exc:
             self.dashboard_summary_label.setText(f"Dashboard unavailable: {exc}")
+            self.dashboard_summary_label.setVisible(True)
             self.next_action_target = "settings"
             self.next_action_title_label.setText("Index Unavailable")
             self.next_action_body_label.setText("Open Settings, confirm the library folder, then rebuild the index.")
             self.next_action_btn.setText("Open Settings")
+            self._set_dashboard_overview_counts()
+            self._clear_dashboard_tables()
             return
 
-        self.metric_total_files.setText(f"{int(stats['total']):,}")
-        self.metric_present_files.setText(f"{int(stats['present']):,}")
-        self.metric_ai_count.setText(f"{int(stats['ai_count']):,}")
-        self.metric_blur_count.setText(f"{int(stats['blur_pending']):,}")
-        self.metric_queue_count.setText(f"{int(stats['delete_queued']):,}")
-        self.metric_error_count.setText(f"{int(stats['sync_errors']):,}")
+        self.dashboard_summary_label.setVisible(False)
+        self._set_dashboard_overview_counts(stats)
+        self.metric_total_files.setText(self._format_count(stats["total"]))
+        self.metric_present_files.setText(self._format_count(stats["present"]))
+        self.metric_ai_count.setText(self._format_count(stats["ai_count"]))
+        self.metric_blur_count.setText(self._format_count(stats["blur_pending"]))
+        self.metric_queue_count.setText(self._format_count(stats["delete_queued"]))
+        self.metric_error_count.setText(self._format_count(stats["sync_errors"]))
 
         self.dashboard_summary_label.setText(
             "Files: {total} | Present: {present} | AI metadata: {ai} | "
@@ -2578,7 +3275,7 @@ class PhotoManagerWindow(QMainWindow):
             self.next_action_btn.setText("Review Cleanup")
         elif int(stats["total"]) == 0:
             self.next_action_target = "settings"
-            self.next_action_title_label.setText("Build The Library Index")
+            self.next_action_title_label.setText("Build your library index")
             self.next_action_body_label.setText("No indexed media yet. Confirm folders in Settings, then rebuild the library index.")
             self.next_action_btn.setText("Open Settings")
         else:
@@ -2606,6 +3303,7 @@ class PhotoManagerWindow(QMainWindow):
             self._set_table_item(self.dashboard_events_table, row, 2, str(item.get("status", "")))
             self._set_table_item(self.dashboard_events_table, row, 3, Path(str(item.get("src", ""))).name)
             self._set_table_item(self.dashboard_events_table, row, 4, Path(str(item.get("dst", ""))).name)
+        self._set_dashboard_empty_states()
         self.log("dashboard: refreshed.")
 
     def on_next_best_action(self) -> None:
@@ -3281,6 +3979,120 @@ class PhotoManagerWindow(QMainWindow):
         self._refresh_google_status_label("Google Drive download queued.")
         self._start_worker("google-download", self._run_google_drive_command_worker, cmd, "google-download")
 
+    def on_generate_lan_pairing_code(self) -> None:
+        self.lan_pairing_code_edit.setText(self._new_pairing_code())
+        self._refresh_lan_urls()
+        self._persist_settings(show_message=False)
+
+    def on_start_lan_receiver(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        try:
+            port = self._lan_port()
+            inbox = self._resolve_lan_inbox(cfg)
+        except Exception as exc:
+            QMessageBox.critical(self, "Phone Connect settings", str(exc))
+            return
+        code = self.lan_pairing_code_edit.text().strip()
+        if not code:
+            code = self._new_pairing_code()
+            self.lan_pairing_code_edit.setText(code)
+        if self.lan_server is not None:
+            self.lan_server.stop()
+        self.lan_server = MobileTransferServer(
+            inbox,
+            port=port,
+            pairing_code=code,
+            log=self.log,
+            on_upload=self._on_lan_upload,
+        )
+        try:
+            actual_port = self.lan_server.start()
+        except Exception as exc:
+            self.lan_server = None
+            QMessageBox.critical(self, "Could not start Phone Connect", str(exc))
+            self._refresh_lan_status()
+            return
+        self.lan_port_edit.setText(str(actual_port))
+        self._persist_settings(show_message=False)
+        self._refresh_lan_status()
+        self._refresh_lan_urls()
+
+    def on_stop_lan_receiver(self) -> None:
+        if self.lan_server is not None:
+            self.lan_server.stop()
+            self.lan_server = None
+        self._refresh_lan_status()
+        self._refresh_lan_urls()
+
+    def _on_lan_upload(self, path: Path, size: int, client: str) -> None:
+        self.lan_recent_uploads.append(path)
+        self._post_ui(lambda: self._add_lan_upload_row(path, size, client))
+
+    def _add_lan_upload_row(self, path: Path, size: int, client: str) -> None:
+        item = QListWidgetItem(f"{datetime.now().strftime('%H:%M:%S')}  {path.name}  {human_bytes(size)}  {client}")
+        item.setToolTip(str(path))
+        self.lan_recent_list.insertItem(0, item)
+        while self.lan_recent_list.count() > 200:
+            self.lan_recent_list.takeItem(self.lan_recent_list.count() - 1)
+        self.on_dashboard_refresh()
+
+    def on_open_lan_inbox(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        inbox = self._resolve_lan_inbox(cfg)
+        inbox.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(inbox)))
+
+    def on_sync_lan_inbox(self) -> None:
+        cfg = self._get_runtime_or_message()
+        if cfg is None:
+            return
+        inbox = self._resolve_lan_inbox(cfg)
+        if not inbox.exists():
+            QMessageBox.information(self, "Phone Inbox", f"Inbox does not exist yet:\n{inbox}")
+            return
+        answer = QMessageBox.question(
+            self,
+            "Sort Phone Inbox",
+            (
+                "Copy phone uploads into year folders and remove verified inbox originals?\n\n"
+                f"Inbox:\n{inbox}"
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        phone_cfg = RuntimeConfig(
+            root=cfg.root,
+            source=inbox,
+            date_source=cfg.date_source,
+            recursive=True,
+            include_nonmedia=cfg.include_nonmedia,
+            full_hash=cfg.full_hash,
+            dry_run=cfg.dry_run,
+            delete_after_sync=True,
+            watch_delete=False,
+            sync_allowed_hours=cfg.sync_allowed_hours,
+            sync_weekly_hours=cfg.sync_weekly_hours,
+            settle_seconds=cfg.settle_seconds,
+            stable_checks=cfg.stable_checks,
+            poll_interval=cfg.poll_interval,
+            blur_csv=cfg.blur_csv,
+            blur_threshold=cfg.blur_threshold,
+            blur_top=cfg.blur_top,
+            auto_delete_max=cfg.auto_delete_max,
+            auto_delete_hard=cfg.auto_delete_hard,
+        )
+        self._start_worker("phone-inbox-sync", self._run_phone_inbox_sync_worker, phone_cfg)
+
+    def _run_phone_inbox_sync_worker(self, cfg: RuntimeConfig) -> None:
+        run_batch_sync(cfg, self.log)
+        self._post_ui(lambda: (self.on_dashboard_refresh(), self.on_gallery_refresh()))
+
     def _validate_google_credentials(self) -> bool:
         credentials = self._google_credentials_path()
         if credentials.exists():
@@ -3343,17 +4155,21 @@ class PhotoManagerWindow(QMainWindow):
         return exe
 
     def _set_bg_running(self, running: bool) -> None:
+        if hasattr(self, "start_background_btn"):
+            self.start_background_btn.setVisible(not running)
+        if hasattr(self, "stop_background_btn"):
+            self.stop_background_btn.setVisible(running)
         if running:
             self.bg_status_label.setText("Watching active")
             self.bg_status_label.setStyleSheet(
                 "color: #99f6e4; background: #062f2a; border: 1px solid #14b8a6; "
-                "border-radius: 999px; padding: 6px 11px; font-weight: 800;"
+                "border-radius: 8px; padding: 6px 14px; font-weight: 900;"
             )
         else:
             self.bg_status_label.setText("Watching paused")
             self.bg_status_label.setStyleSheet(
-                "color: #fde68a; background: #2f230d; border: 1px solid #f59e0b; "
-                "border-radius: 999px; padding: 6px 11px; font-weight: 800;"
+                "color: #fbbf24; background: #2a1d08; border: 1px solid #7c4b10; "
+                "border-radius: 8px; padding: 6px 14px; font-weight: 900;"
             )
 
     def on_blur_scan(self) -> None:
@@ -3644,6 +4460,13 @@ class PhotoManagerWindow(QMainWindow):
         if path:
             self.source_edit.setText(path)
 
+    def on_browse_lan_inbox(self) -> None:
+        start = self.lan_inbox_edit.text().strip() or self.root_edit.text().strip() or str(self.script_dir)
+        path = QFileDialog.getExistingDirectory(self, "Choose phone inbox", start)
+        if path:
+            self.lan_inbox_edit.setText(path)
+            self._refresh_lan_status()
+
     def on_browse_blur_csv(self) -> None:
         start = self.root_edit.text().strip() or str(self.script_dir)
         path, _ = QFileDialog.getSaveFileName(
@@ -3689,6 +4512,9 @@ class PhotoManagerWindow(QMainWindow):
             )
             return
         self.sync_service.stop()
+        if self.lan_server is not None:
+            self.lan_server.stop()
+            self.lan_server = None
         if self.tray_icon is not None:
             self.tray_icon.hide()
         super().closeEvent(event)

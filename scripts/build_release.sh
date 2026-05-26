@@ -101,14 +101,19 @@ if [[ "$SKIP_PYPI_DIST" -eq 0 ]]; then
 fi
 
 if [[ "$SKIP_EXE" -eq 0 ]]; then
-  log "Building Windows executable"
+  log "Building PyInstaller executable"
+  ADD_DATA_SEPARATOR=";"
+  if [[ "$(uname -s 2>/dev/null || echo unknown)" != MINGW* && "$(uname -s 2>/dev/null || echo unknown)" != MSYS* && "$(uname -s 2>/dev/null || echo unknown)" != CYGWIN* ]]; then
+    ADD_DATA_SEPARATOR=":"
+  fi
   pyinstaller \
     --noconfirm \
     --onefile \
     --windowed \
     --name PhotoManagerPro \
+    --exclude-module gi \
     --icon photosync_tool_assets/photo_manager_icon.ico \
-    --add-data "photosync_tool_assets;photosync_tool_assets" \
+    --add-data "photosync_tool_assets${ADD_DATA_SEPARATOR}photosync_tool_assets" \
     photo_manager_gui.py
 fi
 

@@ -47,6 +47,7 @@ def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, 
             "AI Metadata",
             "Sync Plan",
             "Cloud Sync",
+            "Phone Connect",
             "Settings",
             "Diagnostics",
         ]
@@ -59,6 +60,9 @@ def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, 
         assert window.start_background_btn.text() == "Start Watching"
         assert window.google_auth_btn.text() == "Authenticate"
         assert window.google_save_credentials_btn.text() == "Save OAuth JSON"
+        assert window.lan_start_btn.text() == "Start Receiver"
+        assert window.lan_sync_inbox_btn.text() == "Sort Inbox"
+        assert window.lan_pairing_code_edit.text()
         assert window.google_client_secret_edit.echoMode() == window.google_client_secret_edit.EchoMode.Password
         assert "OAuth" in window.google_status_label.text()
         assert window.use_google_drive_btn.text() == "Use Google Drive"

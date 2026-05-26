@@ -9,6 +9,7 @@ venv/
 build/
 dist/
 *.spec
+!mobile/android/buildozer.spec
 release/
 releases/
 *.egg-info/
@@ -31,6 +32,12 @@ TODO.local.md
 local/
 private/
 notes/
+
+# Local mobile build artifacts
+mobile/android/.buildozer/
+mobile/android/bin/
+*.apk
+*.aab
 .codex/
 .cursor/
 .vscode/

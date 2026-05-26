@@ -36,6 +36,7 @@ Links: [Website](https://filipluke.github.io/PhotoSyncTool/) | [Releases](https:
 - Generate local Light AI tags and captions, with optional local OCR through Tesseract.
 - Run headless one-shot sync or background sync through the service entry point.
 - Manage background sync as a Windows Service or Linux systemd user service.
+- Receive photos and videos from the Android companion app through Phone Connect on the same LAN.
 - Build a dry-run Google Drive upload plan and upload new/changed files through the optional cloud backend.
 - Mounted cloud folders, including rclone Google Drive mounts, can be selected as library roots from Settings.
 
@@ -124,12 +125,12 @@ Tip: keep a small disposable demo folder for first tests. This makes it easy to 
 Photo Manager Pro is designed around reviewable file operations:
 
 - Normal sync, indexing, gallery, duplicate review, blur review, and Light AI run locally.
-- The default app does not upload photos to a cloud service.
+- The default app does not upload photos to a cloud service unless Cloud Sync is explicitly configured and started.
 - Batch source deletion runs only after copy verification.
 - Duplicate Review queues deletion candidates instead of deleting them directly.
 - Safe Delete Queue uses the system recycle bin by default.
 - Hard delete options are explicit and should only be used with disposable test libraries or confirmed backups.
-- Google Drive synchronization is planned as a future optional backend, not part of the default local workflow.
+- Google Drive synchronization is optional, OAuth-based, and separated from the default local workflow.
 
 Update checks read public PyPI package metadata. Optional OCR runs locally when the user installs and enables the needed OCR dependencies.
 
@@ -205,6 +206,21 @@ journalctl --user -u photo-manager-pro.service -f
 Use `systemctl --user start|stop|restart|status photo-manager-pro.service` when managing the service directly. If the service should keep running after logout, enable lingering with `loginctl enable-linger "$USER"`.
 
 Service mode is implemented, but still needs real-world install/start/stop/uninstall testing on clean Windows and Linux machines.
+
+## Phone Connect
+
+The desktop app includes a `Phone Connect` tab for local phone-to-PC transfers. Start the receiver, copy one of the shown local URLs into the Android app, enter the pairing code, and send selected photos or videos while both devices are on the same network.
+
+Uploads first land in the configured Phone Inbox. Use `Sort Inbox` to run the normal desktop sync rules against that inbox and move verified files into the year-based library structure.
+
+If you have your own server, VPN, Tailscale, or a reverse proxy, the Android app can use that URL too as long as it forwards to the same desktop receiver endpoint:
+
+```text
+POST /upload?filename=IMG_001.jpg
+X-PhotoManager-Code: 123456
+```
+
+Without a server, keep both devices on the same Wi-Fi network and use the LAN URL shown by the desktop app.
 
 ## Schedule
 
@@ -310,7 +326,7 @@ The public roadmap lives in [ROADMAP.md](ROADMAP.md).
 Related docs:
 
 - [docs/SYSTEMD.md](docs/SYSTEMD.md) for Linux background sync with systemd.
-- [docs/GOOGLE_DRIVE_SYNC.md](docs/GOOGLE_DRIVE_SYNC.md) for the planned Google Drive backend.
+- [docs/GOOGLE_DRIVE_SYNC.md](docs/GOOGLE_DRIVE_SYNC.md) for the optional Google Drive backend.
 - [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) for screenshot capture guidance.
 
 ## License

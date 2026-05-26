@@ -48,7 +48,7 @@ PYTHON=py scripts/build_release.sh
 
 The script requires Bash, for example Git Bash or WSL on Windows.
 
-The script builds PyPI distributions, runs `twine check`, builds `dist/PhotoManagerPro.exe`, and builds the Inno Setup installer when `iscc` is available in `PATH`.
+The script builds PyPI distributions, runs `twine check`, builds a PyInstaller executable for the current OS, and builds the Inno Setup installer when `iscc` is available in `PATH`.
 
 PyPI upload is not automatic. To upload after the checks pass:
 
@@ -189,16 +189,16 @@ For later production-style releases, sign the installer rather than only the raw
 1. Update `version` in `pyproject.toml`.
 2. Update `CHANGELOG.md`.
 3. Commit and push to `main`.
-4. Create a GitHub Release for a matching tag, for example `v0.1.6`.
+4. Create a GitHub Release for a matching tag, for example `v0.2.0`.
 5. The `.github/workflows/publish.yml` workflow builds and uploads the package to PyPI.
 6. The `.github/workflows/windows-exe.yml` workflow builds `PhotoManagerPro.exe` and attaches it to the GitHub Release.
 
 ## GitHub Release Notes Template
 
 ```markdown
-## Photo Manager Pro v0.1.6
+## Photo Manager Pro v0.2.0
 
-Patch release focused on a smoother Google Drive setup flow and a tighter desktop tab bar layout.
+Feature release focused on the new dark dashboard shell, Phone Connect, and refreshed GitHub Pages.
 
 ### Added
 
@@ -215,7 +215,10 @@ Patch release focused on a smoother Google Drive setup flow and a tighter deskto
 - Optional Google Drive CLI backend with OAuth, dry-run upload/download plans, upload/update, and safe missing-file downloads.
 - Cloud Sync GUI tab for Google OAuth setup and guarded Drive transfer actions.
 - Cloud Sync setup fields for pasting Google OAuth Client ID and Client secret directly.
-- Tighter workspace layout with the tab bar placed closer to the dashboard content.
+- Modern left-sidebar dashboard layout with metric cards, empty states, and a clearer command bar.
+- Phone Connect desktop receiver for same-LAN uploads from the Android companion app.
+- Android companion app source for local inbox copies and desktop receiver uploads.
+- Refreshed GitHub Pages site matching the new dashboard product direction.
 - CI coverage for package build, lint, tests, version consistency, and GUI smoke startup.
 
 ### Known Gaps

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-05-26
+
+- Rebuilt the PySide6 desktop shell as a modern dark dashboard with a left sidebar, clearer top actions, status styling, metric cards, dashboard empty states, and local-first footer copy.
+- Added Phone Connect for same-LAN phone-to-desktop media uploads with pairing codes, a desktop receiver tab, inbox sorting, and Android companion app source files.
+- Refreshed GitHub Pages around the new dashboard, Phone Connect, cleanup, cloud planning, and local-first workflow.
+- Updated release metadata for the 0.2.0 Windows executable and package build.
+
 ## 0.1.6 - 2026-05-12
 
 - Added a Settings shortcut that detects mounted Google Drive folders and uses them as local sync targets.
