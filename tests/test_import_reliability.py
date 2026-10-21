@@ -57,15 +57,15 @@ def test_dry_run_does_not_create_library(tmp_path):
 def test_interrupted_copy_keeps_source_and_retry_recovers(tmp_path, monkeypatch):
     cfg = replace(setup_import(tmp_path, [('IMG_20260101.jpg', b'complete photo')]), delete_after_sync=True)
     import shutil
-    original = shutil.copy2
+    original = shutil.copyfile
     def interrupted(src, dst, *args, **kwargs):
         Path(dst).write_bytes(b'partial')
         raise OSError('simulated interrupted copy')
-    monkeypatch.setattr(shutil, 'copy2', interrupted)
+    monkeypatch.setattr(shutil, 'copyfile', interrupted)
     core.run_batch_sync(cfg, lambda _: None)
     assert len(media(cfg.source)) == 1
     assert media(cfg.root) == []
-    monkeypatch.setattr(shutil, 'copy2', original)
+    monkeypatch.setattr(shutil, 'copyfile', original)
     core.run_batch_sync(cfg, lambda _: None)
     assert [p.read_bytes() for p in media(cfg.root)] == [b'complete photo']
     assert media(cfg.source) == []
@@ -77,7 +77,7 @@ def test_watch_copy_failure_never_deletes_source(tmp_path, monkeypatch):
     import shutil
     def fail(*a, **kw):
         raise OSError('simulated write failure')
-    monkeypatch.setattr(shutil, 'copy2', fail)
+    monkeypatch.setattr(shutil, 'copyfile', fail)
     service = core.BackgroundSyncService(lambda _: None)
     service.cfg = cfg
     service.process_path(cfg.source / 'IMG_20260101.jpg')
@@ -123,12 +123,12 @@ def test_watch_partial_fanout_failure_keeps_source(tmp_path, monkeypatch):
     import shutil
     cfg = replace(setup_import(tmp_path, [('snapshot_20260101.jpg', b'photo')]), watch_delete=True)
     monkeypatch.setattr(core, 'ensure_file_stable', lambda *a, **kw: True)
-    original = shutil.copy2
+    original = shutil.copyfile
     def partial(src, dst, *args, **kwargs):
         if Path(dst).parent.name == 'SnapShots':
             raise OSError('simulated second destination unavailable')
         return original(src, dst, *args, **kwargs)
-    monkeypatch.setattr(shutil, 'copy2', partial)
+    monkeypatch.setattr(shutil, 'copyfile', partial)
     service = core.BackgroundSyncService(lambda _: None)
     service.cfg = cfg
     service.process_path(media(cfg.source)[0])
@@ -150,7 +150,7 @@ def test_cli_collision_and_retry_use_verified_import(tmp_path):
 def test_copy_corruption_leaves_no_final_file(tmp_path, monkeypatch):
     import shutil
     cfg = replace(setup_import(tmp_path, [('IMG_20260101.jpg', b'photo')]), delete_after_sync=True)
-    monkeypatch.setattr(shutil, 'copy2', lambda src, dst: Path(dst).write_bytes(b'wrong'))
+    monkeypatch.setattr(shutil, 'copyfile', lambda src, dst: Path(dst).write_bytes(b'wrong'))
     core.run_batch_sync(cfg, lambda _: None)
     assert media(cfg.root) == []
     assert len(media(cfg.source)) == 1
@@ -204,3 +204,20 @@ def test_dangling_symlink_is_preserved_as_collision(tmp_path):
     assert actual != target
     assert actual.read_bytes() == b'photo'
     assert status == 'verified'
+
+
+def test_read_only_source_can_be_imported(tmp_path):
+    import stat
+    from photo_manager_import import copy_verified
+    cfg = setup_import(tmp_path, [('IMG_20260101.jpg', b'photo')])
+    src = media(cfg.source)[0]
+    src.chmod(stat.S_IREAD)
+    dst = cfg.root / '2026' / src.name
+    try:
+        assert copy_verified(src, dst, cfg.root)[1] == 'verified'
+        assert copy_verified(src, dst, cfg.root)[1] == 'already_present'
+        assert dst.read_bytes() == b'photo'
+    finally:
+        src.chmod(stat.S_IREAD | stat.S_IWRITE)
+        if dst.exists():
+            dst.chmod(stat.S_IREAD | stat.S_IWRITE)

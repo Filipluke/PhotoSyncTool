@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import tempfile
 from contextlib import closing
 from pathlib import Path
@@ -46,10 +47,11 @@ def copy_verified(src: Path, requested: Path, root: Path) -> tuple[Path, str, st
                 fd, name = tempfile.mkstemp(prefix='.photosync-', suffix='.part', dir=requested.parent)
                 os.close(fd)
                 temporary = Path(name)
-                shutil.copy2(src, temporary)
+                shutil.copyfile(src, temporary)
                 if sha256(temporary) != digest or sha256(src) != digest:
                     raise OSError('Source changed or copied bytes failed SHA256 verification')
-                with temporary.open('rb') as handle:
+                with temporary.open('r+b') as handle:
+                    shutil.copystat(src, temporary)
                     os.fsync(handle.fileno())
             try:
                 # Both operations fail on an existing destination; never os.replace.
@@ -77,6 +79,10 @@ def copy_verified(src: Path, requested: Path, root: Path) -> tuple[Path, str, st
         return destination, status, digest
     finally:
         if temporary is not None:
+            if os.name == 'nt' and temporary.exists():
+                # A source's read-only attribute may have been copied to our
+                # unpublished temporary file. Never change the published file.
+                temporary.chmod(temporary.stat().st_mode | stat.S_IWRITE)
             temporary.unlink(missing_ok=True)
 
 
