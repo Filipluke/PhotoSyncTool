@@ -114,7 +114,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main() -> None:
     browser = os.environ.get('SITE_BROWSER') or next(
-        (path for name in ('chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable')
+        (path for name in ('google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser')
          if (path := shutil.which(name))), None
     )
     if not browser:
@@ -131,8 +131,11 @@ def main() -> None:
                      f'--user-data-dir={profile}', f'--force-device-scale-factor={scale}',
                      '--window-size=1440,1000', '--virtual-time-budget=30000', '--dump-dom',
                      f'http://127.0.0.1:{server.server_port}/__check.html?scale={scale}'],
-                    capture_output=True, text=True, timeout=60, check=True,
+                    capture_output=True, text=True, timeout=60, check=False,
                 )
+            if result.returncode:
+                print(result.stderr[-4000:])
+                raise SystemExit(f'FAIL: browser exited with {result.returncode}')
             match = re.search(r'<pre id="results">(.*?)</pre>', result.stdout, re.S)
             if not match or match[1] == 'RUNNING':
                 raise SystemExit('FAIL: browser did not finish the checks')
