@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from PIL import Image, ImageDraw, ImageFont  # noqa: E402
+from PIL import Image  # noqa: E402
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
@@ -46,33 +46,11 @@ SCREENSHOTS = {
 }
 
 
-def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for name in ("DejaVuSans-Bold.ttf", "Arial.ttf"):
-        try:
-            return ImageFont.truetype(name, size=size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
-
-
-def _draw_demo_photo(path: Path, *, title: str, subtitle: str, palette: tuple[str, str, str, str]) -> None:
+def _copy_demo_photo(path: Path, filename: str) -> None:
+    """Use bundled public-domain photographs; never fetch images during capture."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    width, height = 1600, 1000
-    image = Image.new("RGB", (width, height), palette[0])
-    draw = ImageDraw.Draw(image)
-
-    band_height = height // 5
-    for index, color in enumerate(palette):
-        y0 = index * band_height
-        draw.rectangle((0, y0, width, y0 + band_height + 80), fill=color)
-
-    draw.polygon([(0, height), (width * 0.46, height * 0.5), (width, height)], fill=palette[1])
-    draw.polygon([(width, 0), (width * 0.56, height * 0.42), (width, height * 0.18)], fill=palette[2])
-    draw.rectangle((96, 116, width - 96, height - 116), outline="#e5edf7", width=8)
-    draw.line((130, height - 210, width - 130, height - 210), fill="#14b8a6", width=7)
-    draw.text((140, height - 340), title, fill="#f8fbff", font=_font(74))
-    draw.text((144, height - 246), subtitle, fill="#d8e2ee", font=_font(34))
-    image.save(path, quality=92)
+    with Image.open(REPO_ROOT / "docs" / "demo-photos" / filename) as image:
+        image.convert("RGB").save(path, quality=92)
 
 
 def _prepare_demo_library(workspace: Path) -> tuple[Path, Path, dict[str, Path]]:
@@ -82,45 +60,23 @@ def _prepare_demo_library(workspace: Path) -> tuple[Path, Path, dict[str, Path]]
     source.mkdir(parents=True)
 
     images = {
-        "hero": root / "2026" / "Aurora_Workspace_20260506.jpg",
-        "gallery": root / "2026" / "Neon_Gallery_20260506.jpg",
-        "archive": root / "2025" / "Archive_Frame_20250314.jpg",
-        "keeper": root / "2026" / "Duplicate_Master_20260506.jpg",
-        "duplicate": root / "2026" / "Duplicate_Master_20260506__dup.jpg",
-        "incoming": source / "Camera_Import_20260506.jpg",
+        "hero": root / "2026" / "Ginger_Cat_20260506.jpg",
+        "gallery": root / "2026" / "Calico_Cat_20260506.jpg",
+        "archive": root / "2025" / "White_Cat_20250314.jpg",
+        "keeper": root / "2026" / "Cat_Portrait_20260506.jpg",
+        "duplicate": root / "2026" / "Cat_Portrait_20260506__dup.jpg",
+        "incoming": source / "New_Cat_Photo_20260506.jpg",
     }
 
-    _draw_demo_photo(
-        images["hero"],
-        title="Indexed Library",
-        subtitle="Dashboard-ready demo media",
-        palette=("#11131a", "#123449", "#0f766e", "#2f230d"),
-    )
-    _draw_demo_photo(
-        images["gallery"],
-        title="Gallery Preview",
-        subtitle="Safe sample metadata",
-        palette=("#10131a", "#0b2535", "#14b8a6", "#7f1d1d"),
-    )
-    _draw_demo_photo(
-        images["archive"],
-        title="Archive 2025",
-        subtitle="Year folder workflow",
-        palette=("#0b0f16", "#1b2635", "#38bdf8", "#2f230d"),
-    )
-    _draw_demo_photo(
-        images["keeper"],
-        title="Duplicate Pair",
-        subtitle="Keeper candidate",
-        palette=("#10131a", "#0f766e", "#0b2535", "#f59e0b"),
-    )
+    for key, filename in (
+        ("hero", "tabby-cat.webp"),
+        ("gallery", "calico-cat.webp"),
+        ("archive", "white-cat.webp"),
+        ("keeper", "nopple-cat.webp"),
+        ("incoming", "tabby-cat.webp"),
+    ):
+        _copy_demo_photo(images[key], filename)
     shutil.copy2(images["keeper"], images["duplicate"])
-    _draw_demo_photo(
-        images["incoming"],
-        title="Incoming Import",
-        subtitle="Source folder sample",
-        palette=("#07090d", "#14202c", "#14b8a6", "#38bdf8"),
-    )
 
     rebuild_index(root, compute_hash=True)
     index_sync_records(
@@ -155,7 +111,7 @@ def _prepare_demo_library(workspace: Path) -> tuple[Path, Path, dict[str, Path]]
         root,
         images["gallery"],
         {
-            "caption": "Neon desktop workspace used as a safe gallery demo.",
+            "caption": "A calico cat from the public-domain demo collection.",
             "tags": ["gallery", "indexed", "demo"],
             "details": {"backend": "demo-screenshot"},
         },
@@ -164,7 +120,7 @@ def _prepare_demo_library(workspace: Path) -> tuple[Path, Path, dict[str, Path]]
         root,
         images["hero"],
         {
-            "caption": "Dashboard sample with local indexing enabled.",
+            "caption": "A ginger cat from the public-domain demo collection.",
             "tags": ["dashboard", "local", "release"],
             "details": {"backend": "demo-screenshot"},
         },
@@ -265,7 +221,7 @@ def capture(output_dir: Path) -> None:
         if window.gallery_list.count():
             target_row = 0
             for row in range(window.gallery_list.count()):
-                if window.gallery_list.item(row).text().startswith("Aurora_Workspace"):
+                if window.gallery_list.item(row).text().startswith("Ginger_Cat"):
                     target_row = row
                     break
             window.gallery_list.setCurrentRow(target_row)
@@ -275,11 +231,11 @@ def capture(output_dir: Path) -> None:
                 "\n".join(
                     [
                         _safe_label(root, selected_path),
-                        "Relative: 2026/Aurora_Workspace_20260506.jpg",
+                        "Relative: 2026/Ginger_Cat_20260506.jpg",
                         "Year: 2026",
                         "Status: present",
                         "Tags: dashboard, local, release",
-                        "Caption: Dashboard sample with local indexing enabled.",
+                        "Caption: A ginger cat from the public-domain demo collection.",
                     ]
                 )
             )

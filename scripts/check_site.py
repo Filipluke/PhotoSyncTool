@@ -46,6 +46,11 @@ const ready = doc => [...doc.images].every(img => img.complete && img.naturalWid
   assert(frame.contentWindow.devicePixelRatio === scale, 'Unexpected device scale');
   for (const img of doc.images) img.loading = 'eager';
   await wait(() => ready(doc), 'initial images');
+  const hero = doc.getElementById('hero-screenshot');
+  assert(hero.currentSrc.startsWith('data:image/webp;base64,'), 'Hero must not wait for an image request');
+  assert(!hero.closest('picture').querySelector('source'), 'Hero must not select an external source');
+  assert(hero.naturalWidth === 960, 'Full hero preview is present');
+  results.hero = {separateImageRequests: 0, width: hero.naturalWidth};
   for (const width of [320,360,375,390,414,600,760,768,820,980,1024,1280,1366,1440,1920,2560,3440,3840]) {
     frame.style.width = width+'px';
     // Force a layout after resizing; compare against clientWidth, excluding the scrollbar.
@@ -70,14 +75,18 @@ const ready = doc => [...doc.images].every(img => img.complete && img.naturalWid
   }
   doc = await open('/no-webp');
   for (const img of doc.images) img.loading = 'eager';
-  await wait(() => ready(doc) && [...doc.images].every(img=>img.currentSrc.endsWith('.png')), 'PNG fallback');
+  await wait(() => ready(doc) && doc.getElementById('app-screenshot').currentSrc.endsWith('.png'), 'PNG fallback');
   results.fallbacks.push('WebP failure -> PNG');
   doc = await open('/no-images');
   for (const img of doc.images) img.loading = 'eager';
-  await wait(() => [...doc.querySelectorAll('.image-error')].every(el=>!el.hidden), 'visible error');
-  assert([...doc.querySelectorAll('.app-frame picture')].every(el=>el.hidden), 'Hide broken images');
-  assert([...doc.querySelectorAll('.image-error a')].every(el=>el.href.endsWith('.png')), 'Original image link');
-  results.fallbacks.push('All images fail -> readable error and original link');
+  await wait(() => [...doc.querySelectorAll('.showcase .image-error')].every(el=>!el.hidden), 'visible error');
+  assert([...doc.querySelectorAll('.showcase picture')].every(el=>el.hidden), 'Hide broken images');
+  assert([...doc.querySelectorAll('.showcase .image-error a')].every(el=>el.href.endsWith('.png')), 'Original image link');
+  results.fallbacks.push('Remote images fail -> readable error and original link');
+  const offlineHero = doc.getElementById('hero-screenshot');
+  assert(offlineHero.complete && offlineHero.naturalWidth === 960 && !offlineHero.closest('picture').hidden,
+    'Hero must remain visible even when every image request fails');
+  results.hero.visibleWithImageNetworkBlocked = true;
   results.status = 'PASS';
 } catch(error) { results.status='FAIL'; results.error=String(error); }
 document.getElementById('results').textContent=JSON.stringify(results);

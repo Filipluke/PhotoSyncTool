@@ -1,6 +1,6 @@
 'use strict';
 const views = {
-  gallery: ['Gallery with demo photos, filters and a detailed preview', 'Browse locally indexed photos and inspect a larger preview. Screenshots use a disposable demo library.'],
+  gallery: ['Gallery with cat photographs, filters and a detailed preview', 'Browse locally indexed photos and inspect a larger preview. Screenshots use a disposable demo library.'],
   dashboard: ['Dashboard with library totals and recent sync activity', 'See library totals, review queues, and recent import activity in one place. Demonstration data.'],
   duplicates: ['Duplicate review with candidate files and a comparison preview', 'Compare duplicate candidates before adding them to the cleanup queue. Demonstration data.']
 };
@@ -10,7 +10,7 @@ for (const picture of document.querySelectorAll('.app-frame picture')) {
   const source = picture.querySelector('source');
   const error = picture.nextElementSibling;
   const failed = () => {
-    if (source.hasAttribute('srcset')) {
+    if (source?.hasAttribute('srcset')) {
       source.removeAttribute('srcset');
       return;
     }
