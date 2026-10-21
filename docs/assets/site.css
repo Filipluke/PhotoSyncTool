@@ -55,6 +55,7 @@ a:focus-visible,button:focus-visible {
 .brand strong {
   font-weight:400}
 .brand-mark {
+  flex-shrink:0;
   display:grid;
   place-items:center;
   background:var(--green);
@@ -82,7 +83,7 @@ a:focus-visible,button:focus-visible {
   margin-left:12px}
 .hero {
   display:grid;
-  grid-template-columns:1fr 1.18fr;
+  grid-template-columns:minmax(0,1fr) minmax(0,1.18fr);
   align-items:center;
   gap:52px;
   padding-block:68px 90px}
@@ -134,6 +135,7 @@ h3 {
   align-items:center;
   justify-content:space-between;
   gap:26px;
+  max-width:100%;
   padding:14px 22px;
   border-radius:6px;
   font-size:14px;
@@ -161,11 +163,12 @@ h3 {
   padding:0 6px}
 .hero-visual {
   position:relative;
-  padding:50px 0 8px}
+  min-width:0;
+  padding:50px 10px 8px}
 .hero-visual:before {
   content:'';
   position:absolute;
-  inset:0 -15px 5px 25px;
+  inset:0 10px 5px 25px;
   background:#e2e6dc;
   border-radius:50% 50% 6px 6px;
   z-index:-1}
@@ -180,6 +183,7 @@ h3 {
   transform:rotate(-2deg);
   width:100%}
 .hero-frame img {
+  width:100%;
   aspect-ratio:1.6;
   object-fit:contain}
 .frame-bar {
@@ -252,7 +256,7 @@ h3 {
   padding:0;
   margin:0;
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:48px}
 .steps li {
   border-top:1px solid var(--line);
@@ -309,7 +313,7 @@ h3 {
   border-top:1px solid var(--line)}
 .details {
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:100px}
 .details-intro {
   color:var(--muted);
@@ -364,7 +368,7 @@ h3 {
   letter-spacing:1px}
 .download-options {
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:24px;
   margin-top:30px}
 .download-card {
@@ -507,11 +511,11 @@ h3 {
 .nav-download span {
   margin-left:5px}
 .hero {
-  grid-template-columns:1fr;
+  grid-template-columns:minmax(0,1fr);
   padding-block:40px 48px;
   gap:30px}
 .hero h1 {
-  font-size:76px}
+  font-size:clamp(52px,10vw,76px)}
 .hero .lead {
   max-width:470px}
 .hero-note {
@@ -537,7 +541,7 @@ h3 {
   max-width:440px;
   margin-top:22px}
 .steps {
-  grid-template-columns:1fr;
+  grid-template-columns:minmax(0,1fr);
   gap:30px}
 .steps h3 {
   margin-top:10px}
@@ -549,14 +553,14 @@ h3 {
 .steps li {
   padding-top:18px}
 .details {
-  grid-template-columns:1fr;
+  grid-template-columns:minmax(0,1fr);
   gap:40px}
 .download-section {
   padding:32px 20px}
 .download-heading h2 {
   font-size:44px}
 .download-options {
-  grid-template-columns:1fr;
+  grid-template-columns:minmax(0,1fr);
   gap:18px;
   margin-top:20px}
 .download-card {
@@ -579,7 +583,7 @@ h3 {
 
 @media(max-width:370px) {
   .hero h1 {
-  font-size:64px}
+  font-size:clamp(48px,15vw,56px)}
 .brand {
   font-size:12px}
 .brand-mark {
@@ -599,4 +603,47 @@ h3 {
   transition:none}
 .button:hover {
   transform:none}
+}
+
+/* Grid items must shrink with their container, including before images load. */
+.hero > *, .details > *, .steps > *, .feature-list article > div {
+  min-width:0;
+}
+.app-frame picture {
+  display:block;
+  max-width:100%;
+}
+.image-error {
+  margin:0;
+  padding:16px 20px;
+  background:var(--white);
+  color:var(--ink);
+  font-size:13px;
+  overflow-wrap:anywhere;
+}
+.app-frame picture[hidden], .image-error[hidden] {
+  display:none;
+}
+@media (min-width:761px) and (max-width:980px) {
+  .hero {
+    grid-template-columns:minmax(0,1fr);
+    padding-block:40px 60px;
+  }
+  .hero-visual {
+    width:100%;
+    max-width:720px;
+    margin:auto;
+  }
+  .hero h1 {
+    font-size:clamp(64px,8vw,78px);
+  }
+  .hero-note {
+    max-width:none;
+  }
+  .download-section {
+    padding:32px 24px;
+  }
+  .download-card {
+    padding:22px;
+  }
 }

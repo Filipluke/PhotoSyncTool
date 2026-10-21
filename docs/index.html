@@ -6,9 +6,9 @@
   <meta name="description" content="Bring your photo collection together. Photo Manager Pro organizes, verifies and helps you review your photos on your own computer. Free and open source for Windows and Linux.">
   <meta name="theme-color" content="#f6f4ee">
   <title>Photo Manager Pro — A home for every photo</title>
-  <link rel="icon" href="assets/icon.png" type="image/png">
-  <link rel="stylesheet" href="assets/site.css">
-  <script src="assets/site.js" defer></script>
+  <link rel="icon" href="assets/favicon.png" sizes="32x32" type="image/png">
+  <link rel="stylesheet" href="assets/site.css?v=20261021-responsive">
+  <script src="assets/site.js?v=20261021-responsive" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -27,7 +27,7 @@
     </div>
     <div class="hero-visual">
       <div class="photo-label"><span class="label-icon" aria-hidden="true">✓</span><span>A little more order.<br><strong>A lot more memories.</strong></span></div>
-      <figure class="app-frame hero-frame"><div class="frame-bar" aria-hidden="true"><span class="frame-dots">● ● ●</span><span>YOUR PERSONAL PHOTO LIBRARY</span><span>↗</span></div><img src="screenshots/gallery.png" alt="Photo Manager Pro gallery showing a local demo collection, year filters and a photo preview" width="1440" height="900" fetchpriority="high"></figure>
+      <figure class="app-frame hero-frame"><div class="frame-bar" aria-hidden="true"><span class="frame-dots">● ● ●</span><span>YOUR PERSONAL PHOTO LIBRARY</span><span>↗</span></div><picture><source type="image/webp" srcset="screenshots/gallery-640.webp 640w, screenshots/gallery-960.webp 960w, screenshots/gallery-1440.webp 1440w" sizes="(max-width: 760px) calc(100vw - 56px), (max-width: 980px) 700px, (max-width: 1376px) 52vw, 645px"><img src="screenshots/gallery.png" alt="Photo Manager Pro gallery showing a local demo collection, year filters and a photo preview" width="1440" height="900" fetchpriority="high"></picture><p class="image-error" hidden role="status">The preview could not load. <a href="screenshots/gallery.png">Open the full screenshot</a> or try again.</p></figure>
       <div class="visual-caption"><span>01 / THE GALLERY</span><span>Real app. Demonstration library.</span></div>
     </div>
   </section>
@@ -44,7 +44,7 @@
     <div class="wrap">
       <div class="section-heading"><div><p class="eyebrow">A CLOSER LOOK</p><h2>Your collection.<br>A clearer view.</h2></div><p>One desktop workspace for your library, import activity, and the photos worth keeping.</p></div>
       <div class="view-controls" role="group" aria-label="Choose an app screenshot"><button type="button" data-view="gallery" aria-pressed="true">01 &nbsp; Gallery</button><button type="button" data-view="dashboard" aria-pressed="false">02 &nbsp; Dashboard</button><button type="button" data-view="duplicates" aria-pressed="false">03 &nbsp; Duplicate review</button></div>
-      <figure class="app-frame showcase"><img id="app-screenshot" src="screenshots/gallery.png" alt="Gallery with demo photos, filters and a detailed preview" width="1440" height="900" loading="lazy"><figcaption id="view-caption" aria-live="polite">Browse locally indexed photos and inspect a larger preview. Screenshots use a disposable demo library.</figcaption></figure>
+      <figure class="app-frame showcase"><picture><source type="image/webp" srcset="screenshots/gallery-640.webp 640w, screenshots/gallery-960.webp 960w, screenshots/gallery-1440.webp 1440w" sizes="(max-width: 760px) calc(100vw - 36px), (max-width: 1050px) calc(100vw - 60px), 1100px"><img id="app-screenshot" src="screenshots/gallery.png" alt="Gallery with demo photos, filters and a detailed preview" width="1440" height="900" loading="lazy"></picture><p class="image-error" hidden role="status">The preview could not load. <a href="screenshots/gallery.png">Open the full screenshot</a> or try again.</p><figcaption id="view-caption" aria-live="polite">Browse locally indexed photos and inspect a larger preview. Screenshots use a disposable demo library.</figcaption></figure>
       <noscript><p>Also explore the <a href="screenshots/dashboard.png">dashboard</a> and <a href="screenshots/duplicates.png">duplicate review</a> screenshots.</p></noscript>
     </div>
   </section>

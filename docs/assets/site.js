@@ -4,11 +4,37 @@ const views = {
   dashboard: ['Dashboard with library totals and recent sync activity', 'See library totals, review queues, and recent import activity in one place. Demonstration data.'],
   duplicates: ['Duplicate review with candidate files and a comparison preview', 'Compare duplicate candidates before adding them to the cleanup queue. Demonstration data.']
 };
+// Fall back once to the original PNG, then show a useful link instead of a broken image.
+for (const picture of document.querySelectorAll('.app-frame picture')) {
+  const img = picture.querySelector('img');
+  const source = picture.querySelector('source');
+  const error = picture.nextElementSibling;
+  const failed = () => {
+    if (source.hasAttribute('srcset')) {
+      source.removeAttribute('srcset');
+      return;
+    }
+    picture.hidden = true;
+    error.hidden = false;
+  };
+  img.addEventListener('error', failed);
+  img.addEventListener('load', () => {
+    picture.hidden = false;
+    error.hidden = true;
+  });
+  if (img.complete && img.naturalWidth === 0) failed();
+}
 for (const button of document.querySelectorAll('[data-view]')) {
   button.addEventListener('click', () => {
     const view = button.dataset.view;
     if (!Object.hasOwn(views, view)) return;
     const screenshot = document.getElementById('app-screenshot');
+    const picture = screenshot.closest('picture');
+    picture.hidden = false;
+    picture.nextElementSibling.hidden = true;
+    picture.nextElementSibling.querySelector('a').href = `screenshots/${view}.png`;
+    picture.querySelector('source').srcset = [640, 960, 1440]
+      .map(width => `screenshots/${view}-${width}.webp ${width}w`).join(', ');
     screenshot.src = `screenshots/${view}.png`;
     screenshot.alt = views[view][0];
     document.getElementById('view-caption').textContent = views[view][1];
