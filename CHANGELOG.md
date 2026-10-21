@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.2.1 - 2026-10-21
+
+- Prevented import name collisions from overwriting different photos, including concurrent imports.
+- Recognize already-present matching files on retry using full SHA256 verification.
+- Copy through temporary files and store durable verification receipts in the existing SQLite index.
+- Fixed source deletion after failed or partially successful watcher imports in the GUI and background service.
+- Made import dry-runs leave the library unchanged and recheck originals before cleanup.
+- Unified tag-driven tests, Windows executable builds, PyPI Trusted Publishing, and GitHub release assets.
+- Redesigned the project website around real app screenshots, platform downloads, and clear alpha status.
+
 ## 0.2.0 - 2026-05-26
 
 - Rebuilt the PySide6 desktop shell as a modern dark dashboard with a left sidebar, clearer top actions, status styling, metric cards, dashboard empty states, and local-first footer copy.

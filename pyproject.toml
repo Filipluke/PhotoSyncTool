@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "photosync-tool"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local desktop tool for organizing, syncing, indexing, and reviewing photos."
 readme = "README.md"
 license = "MIT"
@@ -59,7 +59,7 @@ exe = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Filipluke/PhotoSyncTool"
+Homepage = "https://filipluke.github.io/PhotoSyncTool/"
 Repository = "https://github.com/Filipluke/PhotoSyncTool"
 Issues = "https://github.com/Filipluke/PhotoSyncTool/issues"
 
@@ -79,6 +79,7 @@ py-modules = [
     "photo_manager_gui",
     "photo_manager_google_drive",
     "photo_manager_index",
+    "photo_manager_import",
     "photo_manager_lan",
     "photo_manager_qt",
     "photo_manager_service",

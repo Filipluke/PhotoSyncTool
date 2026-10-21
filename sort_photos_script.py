@@ -173,20 +173,27 @@ def is_media_file(p: Path, include_nonmedia: bool) -> bool:
 
 
 # ---------------- Copy planning ----------------
-def safe_destination_path(dst_dir: Path, filename: str) -> Path:
-    """
-    If file exists, create unique name by appending __1, __2, ...
-    """
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    base = Path(filename).stem
-    ext = Path(filename).suffix
-    candidate = dst_dir / (base + ext)
-    if not candidate.exists():
-        return candidate
-    i = 1
+def safe_destination_path(
+    dst_dir: Path, filename: str, *, source: Optional[Path] = None,
+    reserved: Optional[dict] = None,
+) -> Path:
+    """Plan a unique destination without writing; reuse only equal full hashes."""
+    digest = sha256(source) if source is not None else None
+    base, ext = Path(filename).stem, Path(filename).suffix
+    i = 0
     while True:
-        candidate = dst_dir / f"{base}__{i}{ext}"
-        if not candidate.exists():
+        candidate = dst_dir / (filename if i == 0 else f"{base}__{i}{ext}")
+        if os.path.lexists(candidate):
+            if (source is not None and candidate.is_file()
+                    and candidate.stat().st_size == source.stat().st_size
+                    and sha256(candidate) == digest):
+                return candidate
+        elif reserved is not None and candidate in reserved:
+            if digest is not None and reserved[candidate] == digest:
+                return candidate
+        else:
+            if reserved is not None:
+                reserved[candidate] = digest
             return candidate
         i += 1
 
@@ -199,7 +206,7 @@ class CopyAction:
     flags: List[str]
 
 
-def plan_action(root: Path, src: Path, date_source: str) -> CopyAction:
+def plan_action(root: Path, src: Path, date_source: str, reserved: Optional[dict] = None) -> CopyAction:
     name_lower = src.name.lower()
     flags: List[str] = []
     if "snapshot" in name_lower:
@@ -213,11 +220,11 @@ def plan_action(root: Path, src: Path, date_source: str) -> CopyAction:
     snapshots_dir = (root / "SnapShots").resolve()
     snapchat_dir = (root / "Snapchat").resolve()
 
-    dsts = [safe_destination_path(year_dir, src.name)]
+    dsts = [safe_destination_path(year_dir, src.name, source=src, reserved=reserved)]
     if "snapshot" in flags:
-        dsts.append(safe_destination_path(snapshots_dir, src.name))
+        dsts.append(safe_destination_path(snapshots_dir, src.name, source=src, reserved=reserved))
     if "snapchat" in flags:
-        dsts.append(safe_destination_path(snapchat_dir, src.name))
+        dsts.append(safe_destination_path(snapchat_dir, src.name, source=src, reserved=reserved))
 
     return CopyAction(src=src, dsts=dsts, year=year, flags=flags)
 
@@ -318,16 +325,22 @@ def execute_actions(actions: List[CopyAction], root: Path, full_hash: bool, dry_
     log_path = root / "sort_photos_log.csv"
     copied_records = []
 
+    from photo_manager_import import copy_verified
+
     n = len(actions)
     for i, act in enumerate(actions, start=1):
         progress_line(i, n, act.src.name)
-        for dst in act.dsts:
+        for dst_index, dst in enumerate(act.dsts):
             if dry_run:
                 copied_records.append((str(act.src), str(dst), act.year, ",".join(act.flags), "dry_run"))
                 continue
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(act.src, dst)
-            copied_records.append((str(act.src), str(dst), act.year, ",".join(act.flags), "copied"))
+            dst, status, _digest = copy_verified(act.src, dst, root)
+            act.dsts[dst_index] = dst
+            copied_records.append((str(act.src), str(dst), act.year, ",".join(act.flags), status))
+
+    if dry_run:
+        print("\nDry-run finished. Nothing written or deleted.")
+        return True, log_path
 
     try:
         with log_path.open("w", newline="", encoding="utf-8") as f:
@@ -348,7 +361,7 @@ def execute_actions(actions: List[CopyAction], root: Path, full_hash: bool, dry_
     for i, act in enumerate(actions, start=1):
         progress_line(i, n, f"verify: {act.src.name}")
         for dst in act.dsts:
-            ok, method = verify_copy(act.src, dst, full_hash=full_hash)
+            ok, method = verify_copy(act.src, dst, full_hash=True)
             if not ok:
                 all_ok = False
                 failed.append((act.src, dst, method))
@@ -366,6 +379,9 @@ def execute_actions(actions: List[CopyAction], root: Path, full_hash: bool, dry_
 
 
 def delete_originals(actions: List[CopyAction], recursive: bool) -> None:
+    from photo_manager_import import originals_verified
+    if not originals_verified(actions):
+        raise OSError("Sources changed or destinations are not verified; cleanup cancelled")
     n = len(actions)
     print("\nDeleting originals...")
     for i, act in enumerate(actions, start=1):
@@ -456,20 +472,21 @@ def run_watch_mode(
                 return
 
             try:
+                from photo_manager_import import copy_verified, originals_verified
                 # copy
-                for dst in action.dsts:
+                for dst_index, dst in enumerate(action.dsts):
                     if dry_run:
                         print(f"[watch][dry-run] {path.name} -> {dst}")
                     else:
-                        dst.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(path, dst)
+                        dst, _status, _digest = copy_verified(path, dst, root)
+                        action.dsts[dst_index] = dst
 
                 if dry_run:
                     return
 
                 # verify
                 for dst in action.dsts:
-                    ok2, _ = verify_copy(path, dst, full_hash=full_hash)
+                    ok2, _ = verify_copy(path, dst, full_hash=True)
                     if not ok2:
                         print(f"\n[watch] VERIFY FAILED: {path} -> {dst}")
                         return
@@ -482,7 +499,7 @@ def run_watch_mode(
                 print(msg)
 
                 # delete source if enabled
-                if watch_delete:
+                if watch_delete and originals_verified([action]):
                     try:
                         path.unlink()
                         print(f"[watch] DELETED source: {path.name}")
@@ -521,7 +538,7 @@ def main():
         help="Which timestamp to use for year: exif (EXIF, then filename date, then mtime), mtime, or ctime."
     )
 
-    parser.add_argument("--full-hash", action="store_true", help="Use full SHA256 for verification (slower).")
+    parser.add_argument("--full-hash", action="store_true", help="Compatibility option: imports always verify full SHA256.")
     parser.add_argument("--dry-run", action="store_true", help="Do not copy/delete, only show what would happen.")
     parser.add_argument("--include-nonmedia", action="store_true", help="Also process non-media files.")
     parser.add_argument("--no-recursive", action="store_true", help="Disable recursive processing of subfolders in Sorting folder.")
@@ -569,12 +586,13 @@ def main():
         print("No files to process.")
         return
 
-    actions = [plan_action(root, p, date_source=args.date_source) for p in files]
+    reserved = {}
+    actions = [plan_action(root, p, date_source=args.date_source, reserved=reserved) for p in files]
 
     print(f"\nRoot:   {root}")
     print(f"Source: {source} (recursive={recursive})")
     print(f"Files to process: {len(actions)}")
-    print(f"Mode: {'DRY-RUN' if args.dry_run else 'COPY'} | Verification: {'SHA256(full)' if args.full_hash else 'Quick fingerprint'}")
+    print(f"Mode: {'DRY-RUN' if args.dry_run else 'COPY'} | Verification: SHA256(full)")
     print(f"Date source: {args.date_source} (exif falls back to filename date, then mtime)")
     print()
 

@@ -13,6 +13,13 @@ It gives you a PySide6 desktop GUI, one-shot sync, background folder watching, b
 
 Links: [Website](https://filipluke.github.io/PhotoSyncTool/) | [Releases](https://github.com/Filipluke/PhotoSyncTool/releases) | [Issues](https://github.com/Filipluke/PhotoSyncTool/issues) | [Roadmap](ROADMAP.md)
 
+## Verified imports in 0.2.1
+
+Import copies are written to temporary files, verified with full SHA256, and published without overwriting another file. Verification receipts live in the existing SQLite index. Repeating the same import recognizes matching destination files; different photos sharing a name get distinct paths. Batch and watcher cleanup retain source files if any required copy fails. Dry-run leaves the library unchanged.
+
+Retrying resumes at the file level, not within a partially copied file. Linux library targets must support hard links and directory fsync; unsupported targets fail safely. On Windows the importer uses non-overwriting rename. Keep a separate backup and test a disposable sample before using source deletion.
+
+
 ## Screenshots
 
 ![Dashboard](docs/screenshots/dashboard.png)

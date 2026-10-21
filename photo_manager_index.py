@@ -18,7 +18,7 @@ from sort_photos_script import detect_year, is_media_file, quick_fingerprint
 
 
 INDEX_FILE_NAME = "photo_manager_index.sqlite3"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 INTERNAL_FILE_NAMES = {
     INDEX_FILE_NAME,
     f"{INDEX_FILE_NAME}-wal",
@@ -145,6 +145,14 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             ON sync_events(ts);
         CREATE INDEX IF NOT EXISTS idx_sync_events_status
             ON sync_events(status);
+
+        CREATE TABLE IF NOT EXISTS import_receipts (
+            dst TEXT PRIMARY KEY,
+            src TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            verified_at TEXT NOT NULL
+        );
 
         CREATE TABLE IF NOT EXISTS ai_metadata (
             path TEXT PRIMARY KEY,
@@ -323,7 +331,7 @@ def index_sync_records(
             record_sync_event(conn, row)
             status = str(row.get("status", ""))
             src_raw = str(row.get("src", ""))
-            if src_raw and status in {"copied", "dry_run", "copy_error"}:
+            if src_raw and status in {"copied", "verified", "already_present", "dry_run", "copy_error"}:
                 try:
                     src = Path(src_raw)
                     if not src.is_absolute():
@@ -341,7 +349,7 @@ def index_sync_records(
                 except Exception:
                     stats.failed += 1
             dst_raw = str(row.get("dst", ""))
-            if status == "copied" and dst_raw:
+            if status in {"copied", "verified", "already_present"} and dst_raw:
                 try:
                     dst = Path(dst_raw)
                     if not dst.is_absolute():

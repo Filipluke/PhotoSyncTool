@@ -23,6 +23,7 @@ from sort_photos_script import (
     plan_action,
     verify_copy,
 )
+from photo_manager_import import copy_verified, originals_verified
 from photo_manager_index import index_sync_records, update_file_status
 
 
@@ -365,7 +366,8 @@ def append_sync_records(root: Path, records: List[dict], lock: Optional[threadin
     return log_path
 
 
-def run_batch_sync(cfg: RuntimeConfig, log: Logger) -> None:
+def run_batch_sync(cfg: RuntimeConfig, log: Logger) -> dict:
+    result = dict(copied=0, verified=0, already_present=0, errors=0, planned=0, dry_run=cfg.dry_run)
     log(f"Batch sync root={cfg.root}")
     log(f"Batch sync source={cfg.source}")
 
@@ -382,26 +384,30 @@ def run_batch_sync(cfg: RuntimeConfig, log: Logger) -> None:
     log(f"scan complete: checked={seen}, matched={len(files)}, elapsed={time.time() - t0:.1f}s")
     if not files:
         log("No files matched current settings.")
-        return
+        return result
 
     actions = []
+    reserved = {}
     for idx, path in enumerate(files, start=1):
         try:
-            actions.append(plan_action(cfg.root, path, date_source=cfg.date_source))
+            actions.append(plan_action(cfg.root, path, date_source=cfg.date_source, reserved=reserved))
         except Exception as exc:
+            result["errors"] += 1
             log(f"plan skipped: {path} ({exc})")
         if idx % 400 == 0:
             log(f"planned actions: {idx}/{len(files)}")
 
     if not actions:
         log("No valid actions were generated.")
-        return
+        return result
 
+    result["planned"] = sum(len(action.dsts) for action in actions)
     records: List[dict] = []
+    failed_paths = set()
     copy_errors = 0
 
     for idx, action in enumerate(actions, start=1):
-        for dst in action.dsts:
+        for dst_index, dst in enumerate(action.dsts):
             if cfg.dry_run:
                 records.append(
                     {
@@ -415,8 +421,8 @@ def run_batch_sync(cfg: RuntimeConfig, log: Logger) -> None:
                 )
                 continue
             try:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(action.src, dst)
+                dst, status, digest = copy_verified(action.src, dst, cfg.root)
+                action.dsts[dst_index] = dst
                 records.append(
                     {
                         "mode": "batch",
@@ -424,11 +430,13 @@ def run_batch_sync(cfg: RuntimeConfig, log: Logger) -> None:
                         "dst": str(dst),
                         "year": action.year,
                         "flags": ",".join(action.flags),
-                        "status": "copied",
+                        "status": status,
+                        "sha256": digest,
                     }
                 )
             except Exception as exc:
                 copy_errors += 1
+                failed_paths.add((action.src, dst))
                 records.append(
                     {
                         "mode": "batch",
@@ -444,6 +452,10 @@ def run_batch_sync(cfg: RuntimeConfig, log: Logger) -> None:
         if idx % 250 == 0 or idx == len(actions):
             log(f"copy progress: {idx}/{len(actions)}")
 
+    if cfg.dry_run:
+        log(f"Dry-run complete: planned={len(records)}. Nothing written or deleted.")
+        return result
+
     log_path = append_sync_records(cfg.root, records)
     log(f"sync log updated: {log_path}")
     try:
@@ -457,29 +469,40 @@ def run_batch_sync(cfg: RuntimeConfig, log: Logger) -> None:
     except Exception as exc:
         log(f"index update skipped: {exc}")
 
-    if cfg.dry_run:
-        log("Dry-run complete. No files were copied or deleted.")
-        return
-
     verify_failures = 0
     for idx, action in enumerate(actions, start=1):
         for dst in action.dsts:
             if not dst.exists():
                 verify_failures += 1
+                failed_paths.add((action.src, dst))
                 continue
-            ok, _method = verify_copy(action.src, dst, full_hash=cfg.full_hash)
+            ok, _method = verify_copy(action.src, dst, full_hash=True)
             if not ok:
                 verify_failures += 1
+                failed_paths.add((action.src, dst))
                 log(f"verify failed: {action.src.name} -> {dst.name}")
         if idx % 250 == 0 or idx == len(actions):
             log(f"verify progress: {idx}/{len(actions)}")
 
-    if copy_errors > 0 or verify_failures > 0:
+    result["copied"] = sum(row["status"] == "verified" for row in records)
+    result["already_present"] = sum(row["status"] == "already_present" for row in records)
+    result["verified"] = sum(
+        row["status"] in {"verified", "already_present"}
+        and (Path(row["src"]), Path(row["dst"])) not in failed_paths
+        for row in records
+    )
+    result["errors"] += len(failed_paths)
+    log("Import result: " + ", ".join(f"{key}={result[key]}" for key in ("copied", "verified", "already_present", "errors")))
+    if result["errors"]:
         log(f"Sync completed with errors (copy={copy_errors}, verify={verify_failures}).")
         log("Source deletion skipped due to errors.")
-        return
+        return result
 
     log("All copied files verified successfully.")
+    if cfg.delete_after_sync and not originals_verified(actions):
+        result["errors"] += 1
+        log("Source cleanup skipped: files changed after verification.")
+        return result
     if cfg.delete_after_sync:
         deleted = 0
         failed = 0
@@ -493,8 +516,11 @@ def run_batch_sync(cfg: RuntimeConfig, log: Logger) -> None:
                 deleted += 1
             except Exception as exc:
                 failed += 1
+                result["errors"] += 1
                 log(f"delete failed: {action.src} ({exc})")
         log(f"Source cleanup: deleted={deleted}, failed={failed}")
+
+    return result
 
 
 class BackgroundSyncService:
@@ -652,15 +678,14 @@ class BackgroundSyncService:
                         "status": "dry_run",
                     }
                 )
-            append_sync_records(cfg.root, records)
             self.log(f"[watch][dry-run] {path.name} -> {len(action.dsts)} destinations")
             return
 
         copied_dsts: List[Path] = []
-        for dst in action.dsts:
+        for dst_index, dst in enumerate(action.dsts):
             try:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(path, dst)
+                dst, status, digest = copy_verified(path, dst, cfg.root)
+                action.dsts[dst_index] = dst
                 copied_dsts.append(dst)
                 records.append(
                     {
@@ -669,7 +694,8 @@ class BackgroundSyncService:
                         "dst": str(dst),
                         "year": action.year,
                         "flags": ",".join(action.flags),
-                        "status": "copied",
+                        "status": status,
+                        "sha256": digest,
                     }
                 )
             except Exception as exc:
@@ -685,10 +711,10 @@ class BackgroundSyncService:
                 )
                 self.log(f"[watch] Copy failed: {path.name} -> {dst} ({exc})")
 
-        all_ok = True
+        all_ok = len(copied_dsts) == len(action.dsts) and bool(copied_dsts)
         for dst in copied_dsts:
             try:
-                ok, _method = verify_copy(path, dst, full_hash=cfg.full_hash)
+                ok, _method = verify_copy(path, dst, full_hash=True)
                 if not ok:
                     all_ok = False
                     self.log(f"[watch] Verify failed: {path.name} -> {dst.name}")
@@ -718,7 +744,7 @@ class BackgroundSyncService:
         else:
             self.log(f"[watch] Sync finished with verification issues for: {path.name}")
 
-        if all_ok and cfg.watch_delete:
+        if all_ok and cfg.watch_delete and originals_verified([action]):
             try:
                 path.unlink(missing_ok=True)
                 try:

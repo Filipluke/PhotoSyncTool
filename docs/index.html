@@ -1,229 +1,77 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta
-      name="description"
-      content="Photo Manager Pro is a local Windows and Linux desktop tool for organizing, syncing, indexing, and reviewing photo libraries."
-    >
-    <title>Photo Manager Pro - Local Photo Dashboard</title>
-    <link rel="stylesheet" href="assets/site.css">
-  </head>
-  <body>
-    <header class="hero">
-      <nav class="nav" aria-label="Main navigation">
-        <a class="brand" href="#">Photo Manager Pro</a>
-        <div class="nav-links">
-          <a href="#features">Features</a>
-          <a href="#workflow">Workflow</a>
-          <a href="#screenshots">Screenshots</a>
-          <a href="#download">Download</a>
-          <a href="#roadmap">Roadmap</a>
-          <a href="https://github.com/Filipluke/PhotoSyncTool">GitHub</a>
-        </div>
-      </nav>
-
-      <section class="hero-copy">
-        <p class="eyebrow">Local-first photo management for Windows and Linux</p>
-        <h1>Photo Manager Pro</h1>
-        <p class="lead">
-          A polished desktop dashboard for local photo sync, library indexing, duplicate review,
-          cleanup queues, AI metadata, cloud transfer planning, and phone imports.
-        </p>
-        <div class="actions">
-          <a class="button primary" href="https://github.com/Filipluke/PhotoSyncTool/releases/latest">Latest release</a>
-          <a class="button secondary" href="https://github.com/Filipluke/PhotoSyncTool">Source code</a>
-        </div>
-        <dl class="hero-stats" aria-label="Project highlights">
-          <div>
-            <dt>Local-first</dt>
-            <dd>SQLite metadata and review decisions stay on your device.</dd>
-          </div>
-          <div>
-            <dt>Dashboard UI</dt>
-            <dd>Sync health, cleanup pressure, and recent events in one view.</dd>
-          </div>
-          <div>
-            <dt>Phone Connect</dt>
-            <dd>Receive Android media over the same LAN, then sort the inbox.</dd>
-          </div>
-        </dl>
-      </section>
-    </header>
-
-    <main>
-      <section id="features" class="section">
-        <div class="section-heading">
-          <p class="eyebrow">What it does</p>
-          <h2>A calmer control room for photo libraries</h2>
-        </div>
-        <div class="feature-grid">
-          <article>
-            <span class="card-kicker">Sync</span>
-            <h3>Sort incoming media</h3>
-            <p>Copy photos and videos into year folders using EXIF, filename dates, and timestamp fallbacks.</p>
-          </article>
-          <article>
-            <span class="card-kicker">Index</span>
-            <h3>Build a local library index</h3>
-            <p>Stores file metadata, sync events, blur scores, captions, tags, and review decisions in SQLite.</p>
-          </article>
-          <article>
-            <span class="card-kicker">Cleanup</span>
-            <h3>Review before deleting</h3>
-            <p>Queues duplicates and low-quality candidates before moving files to the recycle bin.</p>
-          </article>
-          <article>
-            <span class="card-kicker">Automation</span>
-            <h3>Run in the background</h3>
-            <p>Watch folders through the GUI, Windows Services, or Linux systemd user services.</p>
-          </article>
-          <article>
-            <span class="card-kicker">AI Metadata</span>
-            <h3>Search tags and captions</h3>
-            <p>Generate lightweight local tags/captions and search metadata without leaving the app.</p>
-          </article>
-          <article>
-            <span class="card-kicker">Cloud Sync</span>
-            <h3>Plan Google Drive transfers</h3>
-            <p>Authenticate with OAuth, preview upload/download plans, and run guarded Drive transfers.</p>
-          </article>
-          <article>
-            <span class="card-kicker">Phone Connect</span>
-            <h3>Receive Android uploads</h3>
-            <p>Start the LAN receiver, pair with a code, and sort uploaded phone media into the desktop library.</p>
-          </article>
-          <article>
-            <span class="card-kicker">Diagnostics</span>
-            <h3>Trace sync activity</h3>
-            <p>Inspect operational logs, export reports, and keep sync failures visible instead of hidden.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="workflow" class="section platform-band">
-        <div class="section-heading">
-          <p class="eyebrow">Workflow</p>
-          <h2>From camera roll to reviewed library</h2>
-        </div>
-        <div class="workflow-grid">
-          <div>
-            <span>01</span>
-            <h3>Choose folders</h3>
-            <p>Confirm the library root, source folder, Phone Inbox, and optional mounted/cloud locations.</p>
-          </div>
-          <div>
-            <span>02</span>
-            <h3>Preview the plan</h3>
-            <p>Review what will be copied before running a sync or sorting phone uploads.</p>
-          </div>
-          <div>
-            <span>03</span>
-            <h3>Index locally</h3>
-            <p>Build the SQLite index so Dashboard, Gallery, duplicates, blur review, and AI metadata stay fast.</p>
-          </div>
-          <div>
-            <span>04</span>
-            <h3>Review and clean</h3>
-            <p>Queue cleanup decisions, export reports, and only delete after an explicit review step.</p>
-          </div>
-        </div>
-        <div class="inline-links">
-          <a href="SYSTEMD.md">Linux systemd</a>
-          <a href="GOOGLE_DRIVE_SYNC.md">Google Drive setup</a>
-          <a href="https://github.com/Filipluke/PhotoSyncTool/tree/main/mobile/android">Android companion</a>
-        </div>
-      </section>
-
-      <section id="screenshots" class="section band">
-        <div class="section-heading">
-          <p class="eyebrow">Screenshots</p>
-          <h2>The new desktop dashboard</h2>
-        </div>
-        <div class="screenshot-grid">
-          <figure>
-            <img
-              src="screenshots/dashboard.svg"
-              alt="Dashboard view"
-              onerror="this.hidden=true; this.nextElementSibling.hidden=false"
-            >
-            <a class="image-placeholder" href="screenshots/dashboard.svg" hidden>dashboard.svg</a>
-            <figcaption>Dashboard with sync health, cleanup pressure, and local index status</figcaption>
-          </figure>
-          <figure>
-            <img
-              src="screenshots/gallery.svg"
-              alt="Gallery view"
-              onerror="this.hidden=true; this.nextElementSibling.hidden=false"
-            >
-            <a class="image-placeholder" href="screenshots/gallery.svg" hidden>gallery.svg</a>
-            <figcaption>Gallery with thumbnails, preview, metadata, and cleanup actions</figcaption>
-          </figure>
-          <figure>
-            <img
-              src="screenshots/duplicates.svg"
-              alt="Duplicate review view"
-              onerror="this.hidden=true; this.nextElementSibling.hidden=false"
-            >
-            <a class="image-placeholder" href="screenshots/duplicates.svg" hidden>duplicates.svg</a>
-            <figcaption>Duplicate review with side-by-side inspection and safe queueing</figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section id="download" class="section download">
-        <div>
-          <p class="eyebrow">Download</p>
-          <h2>Install on Windows or run from Python</h2>
-          <p>
-            GitHub Releases provide the Windows executable. Linux and source users can install
-            the Python package and run the same GUI or headless service commands.
-          </p>
-        </div>
-        <div class="command-box" aria-label="Install command">
-          <code>PhotoManagerPro.exe</code>
-          <code>python -m pip install photosync-tool</code>
-          <code>photo-manager-pro</code>
-          <code>photo-manager-service install</code>
-        </div>
-      </section>
-
-      <section id="roadmap" class="section roadmap">
-        <div class="section-heading">
-          <p class="eyebrow">Roadmap</p>
-          <h2>Still alpha, but moving like a real desktop product</h2>
-        </div>
-        <div class="module-grid">
-          <article>
-            <h3>Cleaner release testing</h3>
-            <p>More clean-machine checks for the Windows executable, installer, and service modes.</p>
-          </article>
-          <article>
-            <h3>Integrity audit</h3>
-            <p>Find missing, moved, changed, zero-byte, and duplicate-indexed files before repair actions.</p>
-          </article>
-          <article>
-            <h3>Import sessions</h3>
-            <p>Preview, copy, verify, and report imports from phones, camera cards, and staging folders.</p>
-          </article>
-          <article>
-            <h3>Smarter albums</h3>
-            <p>Save filtered library views based on years, folders, file types, tags, blur scores, and review state.</p>
-          </article>
-        </div>
-        <div class="inline-links">
-          <a href="https://github.com/Filipluke/PhotoSyncTool/blob/main/ROADMAP.md">Full roadmap</a>
-          <a href="https://github.com/Filipluke/PhotoSyncTool/issues">Issues</a>
-          <a href="https://github.com/Filipluke/PhotoSyncTool/releases">Release history</a>
-        </div>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <a href="https://github.com/Filipluke/PhotoSyncTool/blob/main/CONTRIBUTING.md">Contributing</a>
-      <a href="https://github.com/Filipluke/PhotoSyncTool/blob/main/CHANGELOG.md">Changelog</a>
-      <a href="https://github.com/Filipluke/PhotoSyncTool/blob/main/LICENSE">MIT License</a>
-    </footer>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Bring your photo collection together. Photo Manager Pro organizes, verifies and helps you review your photos on your own computer. Free and open source for Windows and Linux.">
+  <meta name="theme-color" content="#f6f4ee">
+  <title>Photo Manager Pro — A home for every photo</title>
+  <link rel="icon" href="assets/icon.png" type="image/png">
+  <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header wrap">
+  <a class="brand" href="#" aria-label="Photo Manager Pro home"><span class="brand-mark" aria-hidden="true">▧</span><span>Photo Manager <strong>Pro</strong></span></a>
+  <nav aria-label="Main navigation"><a href="#workflow">How it works</a><a href="#inside">Inside the app</a><a class="github-link" href="https://github.com/Filipluke/PhotoSyncTool">GitHub ↗</a><a class="nav-download" href="#download">Get the app <span aria-hidden="true">↓</span></a></nav>
+</header>
+<main id="main">
+  <section class="hero wrap" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> YOUR PHOTOS. YOUR COMPUTER.</p>
+      <h1 id="hero-title">A home for<br>every <em>photo.</em></h1>
+      <p class="lead">From scattered folders to a collection you can enjoy. Organize your photos, find duplicates, and keep the originals in your hands.</p>
+      <div class="hero-actions"><a class="button primary" href="#download">Find your download <span aria-hidden="true">↗</span></a><a class="text-link" href="#inside">Take a look inside <span aria-hidden="true">↓</span></a></div>
+      <p class="hero-note">Free & open source <span aria-hidden="true">·</span> Windows & Linux <span aria-hidden="true">·</span> No account needed</p>
+    </div>
+    <div class="hero-visual">
+      <div class="photo-label"><span class="label-icon" aria-hidden="true">✓</span><span>A little more order.<br><strong>A lot more memories.</strong></span></div>
+      <figure class="app-frame hero-frame"><div class="frame-bar" aria-hidden="true"><span class="frame-dots">● ● ●</span><span>YOUR PERSONAL PHOTO LIBRARY</span><span>↗</span></div><img src="screenshots/gallery.png" alt="Photo Manager Pro gallery showing a local demo collection, year filters and a photo preview" width="1440" height="900" fetchpriority="high"></figure>
+      <div class="visual-caption"><span>01 / THE GALLERY</span><span>Real app. Demonstration library.</span></div>
+    </div>
+  </section>
+  <div class="principles wrap" aria-label="Project principles"><span><b>Local by default.</b> Your library stays with you.</span><span><b>Verified imports.</b> Every copied byte checked.</span><span><b>Open by design.</b> MIT licensed.</span></div>
+  <section id="workflow" class="section wrap">
+    <div class="section-heading"><div><p class="eyebrow">LESS SORTING. MORE REMEMBERING.</p><h2>A calmer way to<br>bring it all together.</h2></div><p>A phone inbox, a memory card, or that folder called “sort later.” Start where your photos are.</p></div>
+    <ol class="steps">
+      <li><span class="step-number">01</span><h3>Choose your folders</h3><p>Pick a source and a library. Import camera files, existing folders, or a Phone Connect inbox.</p><span class="step-detail">SOURCE → LIBRARY</span></li>
+      <li><span class="step-number">02</span><h3>Preview, then import</h3><p>See the plan before you start. Photos are organized by year, with name conflicts handled for you.</p><span class="step-detail">PLAN → VERIFIED COPY</span></li>
+      <li><span class="step-number">03</span><h3>Make room for the good ones</h3><p>Browse your gallery, compare duplicate candidates, and review your cleanup queue before deleting.</p><span class="step-detail">BROWSE → REVIEW</span></li>
+    </ol>
+  </section>
+  <section id="inside" class="inside section">
+    <div class="wrap">
+      <div class="section-heading"><div><p class="eyebrow">A CLOSER LOOK</p><h2>Your collection.<br>A clearer view.</h2></div><p>One desktop workspace for your library, import activity, and the photos worth keeping.</p></div>
+      <div class="view-controls" role="group" aria-label="Choose an app screenshot"><button type="button" data-view="gallery" aria-pressed="true">01 &nbsp; Gallery</button><button type="button" data-view="dashboard" aria-pressed="false">02 &nbsp; Dashboard</button><button type="button" data-view="duplicates" aria-pressed="false">03 &nbsp; Duplicate review</button></div>
+      <figure class="app-frame showcase"><img id="app-screenshot" src="screenshots/gallery.png" alt="Gallery with demo photos, filters and a detailed preview" width="1440" height="900" loading="lazy"><figcaption id="view-caption" aria-live="polite">Browse locally indexed photos and inspect a larger preview. Screenshots use a disposable demo library.</figcaption></figure>
+      <noscript><p>Also explore the <a href="screenshots/dashboard.png">dashboard</a> and <a href="screenshots/duplicates.png">duplicate review</a> screenshots.</p></noscript>
+    </div>
+  </section>
+  <section class="section wrap details">
+    <div><p class="eyebrow">BUILT AROUND YOUR FILES</p><h2>Keep the memories.<br><em>Lose the guesswork.</em></h2><p class="details-intro">A desktop tool that works with ordinary folders. Your collection remains yours to browse, back up, or move.</p><a class="text-link" href="https://github.com/Filipluke/PhotoSyncTool#readme">Read the documentation ↗</a></div>
+    <div class="feature-list">
+      <article><span aria-hidden="true">✓</span><div><h3>Copies you can check</h3><p>Temporary copies are verified with SHA256 before publication. A local SQLite receipt records the result; retries recognize matching files.</p></div></article>
+      <article><span aria-hidden="true">▧</span><div><h3>Review with context</h3><p>Browse your gallery, inspect exact duplicate candidates, and export activity reports. Cleanup decisions stay visible.</p></div></article>
+      <article><span aria-hidden="true">↗</span><div><h3>Connect when you choose</h3><p>Receive phone uploads on your local network. Google Drive transfers are an optional extra with your own OAuth setup.</p></div></article>
+    </div>
+  </section>
+  <section id="download" class="download-section wrap">
+    <div class="download-heading"><p class="eyebrow">START WITH ONE FOLDER</p><h2>Give your photos<br>a place to belong.</h2><p>Photo Manager Pro <b>0.2.1</b> <span class="alpha-badge">Alpha</span><br>Try a small sample library first. Keep a separate backup of your originals.</p></div>
+    <div class="download-options">
+      <article class="download-card"><div class="platform-label">01 / WINDOWS</div><h3>Download and open.</h3><p>Use the standalone executable. No Python installation required.</p><a class="button primary" href="https://github.com/Filipluke/PhotoSyncTool/releases/download/v0.2.1/PhotoManagerPro.exe">Download for Windows <span aria-hidden="true">↓</span></a><p class="fine-print">Unsigned executable; Windows may show a publisher warning. Verify the release and checksums before opening.</p></article>
+      <article class="download-card"><div class="platform-label">02 / PYTHON · LINUX & WINDOWS</div><h3>Your terminal. Your setup.</h3><p>Python 3.10 or newer, in a virtual environment. On Windows, use <code>py</code> instead of <code>python3</code>.</p><pre><code id="install-command">python3 -m venv .venv
+# Linux:
+source .venv/bin/activate
+# Windows PowerShell:
+# .venv\Scripts\Activate.ps1
+python -m pip install --upgrade photosync-tool==0.2.1
+photo-manager-pro</code></pre><button type="button" class="copy-button" id="copy-install">Copy commands <span aria-hidden="true">⧉</span></button><span id="copy-status" role="status"></span><p class="fine-print">Linux needs a graphical desktop and Qt runtime libraries. <a href="https://github.com/Filipluke/PhotoSyncTool#installation">Installation help ↗</a></p></article>
+    </div>
+    <div class="download-footer"><a href="https://github.com/Filipluke/PhotoSyncTool/releases/tag/v0.2.1">Release notes & checksums ↗</a><a href="https://pypi.org/project/photosync-tool/0.2.1/">View on PyPI ↗</a><a href="https://github.com/Filipluke/PhotoSyncTool/issues">Report an issue ↗</a></div>
+  </section>
+  <section class="section wrap next"><p class="eyebrow">GROWING IN THE OPEN</p><h2>A small tool, thoughtfully evolving.</h2><p>Next up: broader desktop testing, library integrity checks, and smoother browsing of large collections. Follow the work, share a bug report, or help shape what comes next.</p><a class="text-link" href="https://github.com/Filipluke/PhotoSyncTool/blob/main/ROADMAP.md">Explore the roadmap ↗</a></section>
+</main>
+<footer class="wrap footer"><a class="brand" href="#"><span class="brand-mark" aria-hidden="true">▧</span> Photo Manager Pro</a><span>Built by <a href="https://github.com/Filipluke">Filipluke</a> · MIT License</span><a href="https://github.com/Filipluke/PhotoSyncTool">PhotoSyncTool on GitHub ↗</a></footer>
+</body>
 </html>

@@ -80,3 +80,27 @@ def test_main_window_builds_expected_workspace(monkeypatch: pytest.MonkeyPatch, 
         window._allow_real_close = True
         window.close()
         app.processEvents()
+
+
+@pytest.mark.parametrize('dry_run', [False, True])
+def test_gui_watcher_keeps_sources_on_failure_or_preview(tmp_path, monkeypatch, dry_run):
+    from dataclasses import replace
+    from types import SimpleNamespace
+    import photo_manager_core as core
+    from test_photo_manager_core import runtime_config
+    cfg = replace(runtime_config(tmp_path), root=tmp_path / 'library', watch_delete=True, dry_run=dry_run)
+    cfg.source.mkdir()
+    source = cfg.source / 'IMG_20260101.jpg'
+    source.write_bytes(b'photo')
+    monkeypatch.setattr(photo_manager_qt, 'ensure_file_stable', lambda *a, **kw: True)
+    def fail(*args, **kwargs):
+        raise OSError('simulated write failure')
+    monkeypatch.setattr(photo_manager_qt, 'copy_verified', fail)
+    fake_app = SimpleNamespace(log=lambda _: None, is_sync_time_allowed=lambda _: True,
+                               append_sync_records=core.append_sync_records)
+    watcher = photo_manager_qt.SyncWatchService(fake_app)
+    watcher.cfg = cfg
+    watcher.process_path(source)
+    assert source.read_bytes() == b'photo'
+    if dry_run:
+        assert not cfg.root.exists()

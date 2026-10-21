@@ -15,11 +15,11 @@ Photo Manager Pro is an alpha desktop app. The near-term goal is to make the cur
 
 ## 0.3 - Library Maintenance
 
-- Add a synchronization report export from the GUI.
+- Extend the existing GUI synchronization report with integrity audit results.
 - Add pause controls and separate schedules for sync, blur analysis, and AI metadata.
 - Add an integrity audit for missing, moved, duplicated, and changed files.
 - Add repair previews for safe rename, move, and index cleanup operations.
-- Add smarter conflict handling when two files map to the same destination.
+- Extend verified conflict handling with library-wide content lookup and named import sessions.
 
 ## 0.4 - Discovery And Review
 
@@ -37,11 +37,11 @@ Photo Manager Pro is an alpha desktop app. The near-term goal is to make the cur
 - Add a backend selector for local heuristic, ONNX, or API-powered metadata.
 - Keep Torch/GPU dependencies outside the default install.
 
-## 0.6 - Optional Cloud Sync
+## 0.6 - Extend Optional Cloud Sync
 
-- Add a Google Drive backend as an explicit optional feature, not part of the local default workflow.
-- Use OAuth with user-selected scopes and store tokens in the per-user config/cache area.
-- Add a dry-run upload/download plan before transferring files.
+- Build on the existing optional Google Drive backend.
+- Improve the existing OAuth onboarding and account diagnostics.
+- Extend existing dry-run upload/download plans with richer conflict previews.
 - Support resumable uploads, retry queues, bandwidth limits, and conflict handling.
 - Cache Drive file IDs, hashes, modified times, and sync state in SQLite.
 - Keep local file organization, duplicate review, and delete safety rules separate from cloud deletion.

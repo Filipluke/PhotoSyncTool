@@ -36,6 +36,7 @@ from photo_manager_core import (
     serialize_weekly_hours,
     weekly_schedule_summary,
 )
+from photo_manager_import import copy_verified, originals_verified
 from photo_manager_index import (
     default_index_path,
     import_blur_csv,
@@ -606,25 +607,14 @@ class SyncWatchService:
                         "status": "dry_run",
                     }
                 )
-            self.app.append_sync_records(cfg.root, records)
-            try:
-                index_sync_records(
-                    cfg.root,
-                    records,
-                    date_source=cfg.date_source,
-                    compute_hash=cfg.full_hash,
-                    log=self.app.log,
-                )
-            except Exception as exc:
-                self.app.log(f"[watch] Index update skipped: {exc}")
             self.app.log(f"[watch][dry-run] {path.name} -> {len(action.dsts)} destinations")
             return
 
         copied_dsts: List[Path] = []
-        for dst in action.dsts:
+        for dst_index, dst in enumerate(action.dsts):
             try:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(path, dst)
+                dst, status, digest = copy_verified(path, dst, cfg.root)
+                action.dsts[dst_index] = dst
                 copied_dsts.append(dst)
                 records.append(
                     {
@@ -633,7 +623,8 @@ class SyncWatchService:
                         "dst": str(dst),
                         "year": action.year,
                         "flags": ",".join(action.flags),
-                        "status": "copied",
+                        "status": status,
+                        "sha256": digest,
                     }
                 )
             except Exception as exc:
@@ -649,10 +640,10 @@ class SyncWatchService:
                 )
                 self.app.log(f"[watch] Copy failed: {path.name} -> {dst} ({exc})")
 
-        all_ok = True
+        all_ok = len(copied_dsts) == len(action.dsts) and bool(copied_dsts)
         for dst in copied_dsts:
             try:
-                ok, _method = verify_copy(path, dst, full_hash=cfg.full_hash)
+                ok, _method = verify_copy(path, dst, full_hash=True)
                 if not ok:
                     all_ok = False
                     self.app.log(f"[watch] Verify failed: {path.name} -> {dst.name}")
@@ -682,7 +673,7 @@ class SyncWatchService:
         else:
             self.app.log(f"[watch] Sync finished with verification issues for: {path.name}")
 
-        if all_ok and cfg.watch_delete:
+        if all_ok and cfg.watch_delete and originals_verified([action]):
             try:
                 path.unlink(missing_ok=True)
                 try:
@@ -1095,7 +1086,7 @@ class PhotoManagerWindow(QMainWindow):
 
         self.recursive_check = QCheckBox("Recursive source scan")
         self.include_nonmedia_check = QCheckBox("Include non-media files")
-        self.full_hash_check = QCheckBox("Verify with full SHA256")
+        self.full_hash_check = QCheckBox("Also fingerprint library index entries")
         self.dry_run_check = QCheckBox("Dry-run mode")
         self.delete_after_sync_check = QCheckBox("Delete source after batch sync")
         self.watch_delete_check = QCheckBox("Delete source in background sync")
@@ -1215,7 +1206,7 @@ class PhotoManagerWindow(QMainWindow):
         layout.addLayout(
             self._page_header(
                 "Sync Plan",
-                "Preview what will be copied from the source folder into the library before starting a sync.",
+                "1. Choose Source and Library in Settings. 2. Preview destinations. 3. Select Sync Now. First 300 files shown.",
             )
         )
         preview_split = QSplitter()
@@ -3046,58 +3037,35 @@ class PhotoManagerWindow(QMainWindow):
         cfg = self._get_runtime_or_message()
         if cfg is None:
             return
-
         self.source_preview_list.clear()
         self.target_preview_list.clear()
         self.source_preview_path.setText(str(cfg.source))
         self.target_preview_path.setText(str(cfg.root))
-
         if not cfg.source.exists():
             self.source_preview_list.addItem("Source folder does not exist.")
-            self.log("compare-preview: source folder does not exist.")
-        else:
-            source_count = 0
-            for p in iter_source_files(cfg.source, recursive=cfg.recursive):
-                if not is_media_file(p, include_nonmedia=cfg.include_nonmedia):
-                    continue
-                source_count += 1
-                if source_count <= 300:
-                    try:
-                        rel = p.relative_to(cfg.source)
-                    except Exception:
-                        rel = p
-                    self.source_preview_list.addItem(str(rel))
-            if source_count == 0:
-                self.source_preview_list.addItem("No matching files found.")
-            elif source_count > 300:
-                self.source_preview_list.addItem(f"... and {source_count - 300} more files")
-
-        if not cfg.root.exists():
-            self.target_preview_list.addItem("Root folder does not exist.")
-            self.log("compare-preview: root folder does not exist.")
-        else:
-            year_dirs = []
-            for d in cfg.root.iterdir():
-                if d.is_dir() and d.name.isdigit() and len(d.name) == 4:
-                    year_dirs.append(d)
-            year_dirs.sort(key=lambda d: d.name)
-
-            if not year_dirs:
-                self.target_preview_list.addItem("No YYYY year folders found in root.")
-            else:
-                for yd in year_dirs[:40]:
-                    file_count = self._quick_file_count(yd, limit=20000)
-                    self.target_preview_list.addItem(f"{yd.name}    [{file_count} files]")
-                if len(year_dirs) > 40:
-                    self.target_preview_list.addItem(f"... and {len(year_dirs) - 40} more year folders")
-
-            for special in ("SnapShots", "Snapchat"):
-                sp = cfg.root / special
-                if sp.exists() and sp.is_dir():
-                    cnt = self._quick_file_count(sp, limit=20000)
-                    self.target_preview_list.addItem(f"{special}    [{cnt} files]")
-
-        self.log("compare-preview: refreshed.")
+            return
+        reserved = {}
+        count = 0
+        for path in iter_source_files(cfg.source, recursive=cfg.recursive):
+            if not is_media_file(path, include_nonmedia=cfg.include_nonmedia):
+                continue
+            count += 1
+            if count > 300:
+                continue
+            self.source_preview_list.addItem(str(path.relative_to(cfg.source)))
+            try:
+                action = plan_action(cfg.root, path, date_source=cfg.date_source, reserved=reserved)
+                for dst in action.dsts:
+                    state = "Already present" if dst.exists() else "Copy + SHA256"
+                    self.target_preview_list.addItem(f"{state}: {dst.relative_to(cfg.root)}")
+            except Exception as exc:
+                self.target_preview_list.addItem(f"Error: {path.name}: {exc}")
+        if count == 0:
+            self.source_preview_list.addItem("No matching files found.")
+        if count > 300:
+            self.source_preview_list.addItem(f"... and {count - 300} more files")
+            self.target_preview_list.addItem("Preview limited to 300 sources; import plans every file.")
+        self.log(f"compare-preview: {count} sources; no library changes.")
 
     def _quick_file_count(self, folder: Path, limit: int) -> int:
         count = 0
@@ -3126,7 +3094,7 @@ class PhotoManagerWindow(QMainWindow):
 
             return metadata.version("photosync-tool")
         except Exception:
-            return "0.2.0"
+            return "0.2.1"
 
     def _set_preview_image(self, label: QLabel, path: Path) -> None:
         pixmap = QPixmap()
@@ -3848,7 +3816,22 @@ class PhotoManagerWindow(QMainWindow):
         self.on_dashboard_refresh()
 
     def _run_sync_now_worker(self, cfg: RuntimeConfig) -> None:
-        run_batch_sync(cfg, self.log)
+        result = run_batch_sync(cfg, self.log)
+        def show_result():
+            if result["dry_run"]:
+                message = f"Planned destinations: {result['planned']}\nNothing was written or deleted."
+            else:
+                message = (f"New copies: {result['copied']}\n"
+                           f"Verified destinations: {result['verified']}\n"
+                           f"Already present: {result['already_present']}\n"
+                           f"Errors: {result['errors']}")
+                self.on_dashboard_refresh()
+                self.on_gallery_refresh()
+            if result["errors"]:
+                QMessageBox.warning(self, "Import needs attention", message)
+            else:
+                QMessageBox.information(self, "Import result", message)
+        self._post_ui(show_result)
 
     def on_start_background(self) -> None:
         cfg = self._get_runtime_or_message()

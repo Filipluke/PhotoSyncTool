@@ -1,6 +1,6 @@
 #define MyAppName "Photo Manager Pro"
 #define MyAppExeName "PhotoManagerPro.exe"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.2.1"
 #define MyAppPublisher "Filipluke"
 
 [Setup]
