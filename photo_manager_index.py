@@ -63,20 +63,51 @@ def relative_to_root(root: Path, path: Path) -> str:
         return path.name
 
 
-def connect(index_path: Path) -> sqlite3.Connection:
+def _is_busy(exc: sqlite3.OperationalError) -> bool:
+    # sqlite_errorcode was added in Python 3.11. Keep 3.10's exact-message fallback.
+    code = getattr(exc, "sqlite_errorcode", None)
+    return (code & 0xff) == 5 if code is not None else str(exc) == "database is locked"
+
+
+def connect(index_path: Path, *, timeout: float = 30.0) -> sqlite3.Connection:
+    """Open an initialized database, with a bounded budget for competing writers.
+
+    Changing journal mode can return SQLITE_BUSY without invoking SQLite's busy
+    handler. Retry that initialization on a fresh connection, never a caller's
+    transaction. SQLite's own lock handles both threads and separate processes.
+    """
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(index_path), timeout=30.0)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=30000")
-    ensure_schema(conn)
-    return conn
+    deadline = time.monotonic() + timeout
+    delay = 0.01
+    while True:
+        remaining = max(0.0, deadline - time.monotonic())
+        conn = sqlite3.connect(str(index_path), timeout=remaining)
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute(f"PRAGMA busy_timeout={int(remaining * 1000)}")
+            mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+            if mode.lower() != "wal":
+                mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+                if mode.lower() != "wal":
+                    raise sqlite3.OperationalError(f"Could not enable WAL: {mode}")
+            conn.execute("PRAGMA foreign_keys=ON")
+            ensure_schema(conn)
+            conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
+            return conn
+        except Exception as exc:
+            # Roll back partial DDL and release locks even when initialization fails.
+            conn.close()
+            remaining = deadline - time.monotonic()
+            if not isinstance(exc, sqlite3.OperationalError) or not _is_busy(exc) or remaining <= 0:
+                raise
+            time.sleep(min(delay, remaining))
+            delay = min(delay * 2, 0.2)
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
+        BEGIN IMMEDIATE;
         CREATE TABLE IF NOT EXISTS app_meta (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -166,7 +197,8 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute(
-        "INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?)",
+        "INSERT INTO app_meta(key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE value != excluded.value",
         ("schema_version", str(SCHEMA_VERSION)),
     )
     conn.commit()

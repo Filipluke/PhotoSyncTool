@@ -81,6 +81,7 @@ def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 def ensure_feature_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
+        BEGIN IMMEDIATE;
         CREATE TABLE IF NOT EXISTS delete_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT NOT NULL,
@@ -111,8 +112,12 @@ def ensure_feature_schema(conn: sqlite3.Connection) -> None:
 
 def _connect_features(root: Path) -> sqlite3.Connection:
     conn = connect(default_index_path(root))
-    ensure_feature_schema(conn)
-    return conn
+    try:
+        ensure_feature_schema(conn)
+        return conn
+    except Exception:
+        conn.close()
+        raise
 
 
 def parse_tags(raw: str | None) -> list[str]:
