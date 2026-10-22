@@ -58,7 +58,13 @@ Retrying resumes at the file level, not within a partially copied file. Linux li
 
 ## Install And Run
 
-For the current alpha, running from source is the clearest path.
+Current release: **0.2.1 (alpha)**. Use the [Windows executable](https://github.com/Filipluke/PhotoSyncTool/releases/download/v0.2.1/PhotoManagerPro.exe)
+(no Python required) or install `photosync-tool==0.2.1` in a virtual environment.
+The executable is unsigned; verify the release SHA256 checksum. Linux requires a
+Qt-capable graphical desktop. Keep a separate backup and test a small library first.
+
+The steps below run the source checkout. The redesigned workspace on this branch
+is an unreleased development preview; current downloads retain the released UI.
 
 ### Windows
 
@@ -86,10 +92,10 @@ python photo_manager_gui.py
 
 `photo_manager_gui.py` is the launcher. The main desktop interface lives in `photo_manager_qt.py`.
 
-When a public PyPI release is available, installation should look like this:
+Install the current PyPI release:
 
 ```powershell
-python -m pip install photosync-tool
+python -m pip install photosync-tool==0.2.1
 photo-manager-pro
 ```
 
@@ -339,3 +345,12 @@ Related docs:
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+## Design and validation
+
+See [DESIGN.md](DESIGN.md) for typography, accessibility and component rules.
+IBM Plex fonts and their OFL license are bundled for offline desktop use.
+Generate real demo captures with `python scripts/capture_demo_screenshots.py`, then
+`python scripts/build_site_images.py`. Check the site with `python scripts/check_site.py`
+and `SITE_SCALE=2 python scripts/check_site.py`. See [RELEASE.md](RELEASE.md) for
+installed-package checks and publication recovery. No private library is used.

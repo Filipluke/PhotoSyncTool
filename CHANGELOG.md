@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Serialize SQLite schema migrations with write transactions and retry only transient WAL initialization contention within a bounded deadline; close failed connections.
+- Cover concurrent imports across eight processes, concurrent feature migrations, bounded lock failure and atomic schema rollback.
+- Introduce the offline IBM Plex archive design, compact library overview, grouped navigation, larger gallery and duplicate inspectors, readable settings and operation status.
+- Align the website with the desktop and label screenshots as an unreleased development preview.
+- Validate critical site assets and screenshot provenance, packaged fonts/icons, installed entry points and immutable PyPI artifact hashes.
+
 ## 0.2.1 - 2026-10-21
 
 - Prevented import name collisions from overwriting different photos, including concurrent imports.

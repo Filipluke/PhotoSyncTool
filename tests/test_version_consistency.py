@@ -26,3 +26,14 @@ def test_release_version_is_consistent() -> None:
     assert f'return "{version}"' in gui
     assert re.search(rf"^## {re.escape(version)} - \d{{4}}-\d{{2}}-\d{{2}}$", changelog, re.MULTILINE)
     assert f"Photo Manager Pro v{version}" in release
+
+
+def test_public_downloads_match_current_release() -> None:
+    version = project_version()
+    page = (ROOT / 'docs/index.html').read_text(encoding='utf-8')
+    readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+    assert set(re.findall(r'releases/(?:download|tag)/v([0-9.]+)', page)) == {version}
+    assert set(re.findall(r'photosync-tool==([0-9.]+)', page + readme)) == {version}
+    assert f'project/photosync-tool/{version}/' in page
+    assert f'data-release-version>{version}<' in page
+    assert 'Development preview; current downloads' in page

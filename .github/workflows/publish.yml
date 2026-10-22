@@ -11,13 +11,16 @@ concurrency:
 jobs:
   version:
     name: Validate immutable release tag
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.13'
       - name: Match tag to package version
+        id: version
         env:
           RELEASE_REF: ${{ github.ref }}
         run: |
@@ -25,6 +28,8 @@ jobs:
           import os, pathlib, tomllib
           version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
           assert os.environ['RELEASE_REF'] == f'refs/tags/v{version}', 'Run releases only on their matching version tag'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={version}\n')
           PY
   tests:
     needs: version
@@ -37,13 +42,14 @@ jobs:
     needs: tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.13'
       - run: python -m pip install build twine
       - run: python -m build
       - run: python -m twine check dist/*
+      - run: python scripts/check_distributions.py dist
       - uses: actions/upload-artifact@v4
         with:
           name: python-package-distributions
@@ -51,17 +57,25 @@ jobs:
           if-no-files-found: error
   publish:
     name: Publish to PyPI
-    needs: [build, windows]
+    needs: [version, build, windows]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write
+      contents: read
     steps:
+      - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v4
         with:
           name: python-package-distributions
           path: dist/
+      - name: Check immutable PyPI artifacts
+        id: preflight
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: python scripts/check_pypi_release.py --version "$RELEASE_VERSION"
       - uses: pypa/gh-action-pypi-publish@release/v1
+        if: steps.preflight.outputs.publish == 'true'
   release:
     name: Publish GitHub release and checksums
     needs: publish
@@ -69,7 +83,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v4
         with:
           name: python-package-distributions
