@@ -221,3 +221,35 @@ def test_read_only_source_can_be_imported(tmp_path):
         src.chmod(stat.S_IREAD | stat.S_IWRITE)
         if dst.exists():
             dst.chmod(stat.S_IREAD | stat.S_IWRITE)
+
+
+@pytest.mark.skipif(__import__('os').name != 'nt', reason='Windows file sharing semantics')
+def test_hash_verification_shares_rename_handle_but_respects_exclusive_lock(tmp_path):
+    import hashlib
+    import win32con
+    import win32file
+    from sort_photos_script import sha256
+
+    path = tmp_path / 'published.jpg'
+    content = b'complete verified photo'
+    path.write_bytes(content)
+    # Hold the same access/share combination as an in-flight Windows rename.
+    handle = win32file.CreateFile(str(path), win32con.DELETE,
+                                 win32con.FILE_SHARE_READ | win32con.FILE_SHARE_WRITE | win32con.FILE_SHARE_DELETE,
+                                 None, win32con.OPEN_EXISTING, win32con.FILE_ATTRIBUTE_NORMAL, None)
+    try:
+        # Demonstrate the original race without relying on thread timing.
+        with pytest.raises(PermissionError):
+            with path.open('rb'):
+                pass
+        assert sha256(path) == hashlib.sha256(content).hexdigest()
+    finally:
+        handle.Close()
+    handle = win32file.CreateFile(str(path), win32con.GENERIC_READ, 0,
+                                 None, win32con.OPEN_EXISTING, win32con.FILE_ATTRIBUTE_NORMAL, None)
+    try:
+        with pytest.raises(OSError):
+            sha256(path)
+    finally:
+        handle.Close()
+    assert path.read_bytes() == content
