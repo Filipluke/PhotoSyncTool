@@ -82,13 +82,14 @@ py-modules = [
     "photo_manager_import",
     "photo_manager_lan",
     "photo_manager_qt",
+    "photo_manager_theme",
     "photo_manager_service",
     "sort_photos_script",
 ]
-packages = ["photosync_tool_assets"]
+packages = ["photosync_tool_assets", "photosync_tool_assets.fonts"]
 
 [tool.setuptools.package-data]
-photosync_tool_assets = ["*.png", "*.ico"]
+photosync_tool_assets = ["*.png", "*.ico", "fonts/*.ttf", "fonts/OFL.txt"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

@@ -1,4 +1,5 @@
 'use strict';
+document.documentElement.classList.add('js');
 const views = {
   gallery: ['Gallery with cat photographs, filters and a detailed preview', 'Browse locally indexed photos and inspect a larger preview. Screenshots use a disposable demo library.'],
   dashboard: ['Dashboard with library totals and recent sync activity', 'See library totals, review queues, and recent import activity in one place. Demonstration data.'],

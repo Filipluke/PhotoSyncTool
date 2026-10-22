@@ -1,0 +1,9 @@
+{
+  "width": 1440,
+  "height": 900,
+  "sources": {
+    "photo_manager_qt.py": "cb2b5dff7b2155cfc731b9c89d8d2edb2f7e42f60826e0fdd050e23945a3aaca",
+    "photo_manager_theme.py": "baa776420606961396b993eaaaad4214193a121dc38b641b66868eb8a1427832",
+    "scripts/capture_demo_screenshots.py": "b727fd60d83a739c73f9a20b8d399e43ceeebfdc7cb9fc9c9e6857996d7125a3"
+  }
+}
