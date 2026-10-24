@@ -1,0 +1,17 @@
+{
+  "width": 1440,
+  "height": 900,
+  "sources": {
+    "photo_manager_qt.py": "cb2b5dff7b2155cfc731b9c89d8d2edb2f7e42f60826e0fdd050e23945a3aaca",
+    "photo_manager_theme.py": "5522ee0b90c7c02e59aa21f6c340bbedade1de7793e3d2253187d14d00456f49",
+    "scripts/capture_demo_screenshots.py": "f20fc7fe5362011d4e2e85ba323d6f5d9f09940bd9184967c70966d68a5dc547"
+  },
+  "images": {
+    "dashboard.png": "18a3486793e715a5356fbbafb350b52960809a50b4ebe5cc026a14df54ec78cc",
+    "gallery.png": "e1147c0fd7e4cec8bff9187c84528b045c4feae9ad9c78bcbcf8b08d3f26e383",
+    "duplicates.png": "217078703b935f8430f2da4aee99e0269d02c0ad711e72fa140fec9b17313ba8",
+    "settings.png": "c9a6f72c1985a745d9cd46157b32bdf995825b325d943bbca47c19bef3d347ab",
+    "diagnostics.png": "4796309177589c46795586e92945442611a1cfe282cc4a77198e80441679e574",
+    "cleanup.png": "ecb30561ed57f1a1a913e30d386c121f90daab18e1ca6417f609c3abbdd395e3"
+  }
+}

@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
 import os
 import shutil
 import sys
@@ -43,6 +46,9 @@ SCREENSHOTS = {
     "dashboard": "dashboard.png",
     "gallery": "gallery.png",
     "duplicates": "duplicates.png",
+    "settings": "settings.png",
+    "diagnostics": "diagnostics.png",
+    "cleanup": "cleanup.png",
 }
 
 
@@ -188,12 +194,18 @@ def _select_tab(window: gui.PhotoManagerWindow, label: str) -> None:
     raise RuntimeError(f"Tab not found: {label}")
 
 
-def capture(output_dir: Path) -> None:
+def capture(output_dir: Path, width: int = 1440, height: int = 900) -> None:
     with tempfile.TemporaryDirectory(prefix="photo-manager-pro-screens-") as tmp:
         root, source, _images = _prepare_demo_library(Path(tmp))
 
         gui.default_config_path = lambda: Path(tmp) / "photo_manager_config.json"
+        gui.default_legacy_config_path = lambda: Path(tmp) / "legacy_config.json"
+        # No user config, autostart, network receiver or cloud account during capture.
+        gui.PhotoManagerWindow._load_config = gui.PhotoManagerWindow._default_config
         gui.default_photo_root = lambda: root
+        gui.default_google_credentials_path = lambda: Path(tmp) / "credentials.json"
+        gui.default_google_token_path = lambda: Path(tmp) / "token.json"
+        gui.detect_google_drive_folder = lambda: None
 
         app = QApplication.instance() or QApplication([])
         app.setQuitOnLastWindowClosed(False)
@@ -207,7 +219,7 @@ def capture(output_dir: Path) -> None:
         window._apply_config(cfg)
         window.root_summary_label.setText("Library: Demo Library | Source: Incoming Camera Roll")
         window.root_summary_label.setToolTip("")
-        window.resize(1440, 900)
+        window.resize(width, height)
         window.show()
 
         _select_tab(window, "Dashboard")
@@ -264,13 +276,41 @@ def capture(output_dir: Path) -> None:
             )
         _capture(window, app, output_dir, "duplicates")
 
+        for title, name in (("Cleanup", "cleanup"), ("Settings", "settings"), ("Diagnostics", "diagnostics")):
+            _select_tab(window, title)
+            if name == "cleanup":
+                window.on_delete_queue_refresh()
+                for row in range(window.delete_table.rowCount()):
+                    item = window.delete_table.item(row, 1)
+                    item.setText(_safe_label(root, Path(item.text())))
+            if name == "settings":
+                window.root_edit.setText("Demo Library")
+                window.source_edit.setText("Incoming Camera Roll")
+                window.blur_csv_edit.setText("Demo Library/blur_candidates.csv")
+            if name == "diagnostics":
+                window._drain_log_queue()
+                text = window.log_view.toPlainText().replace(str(root), "Demo Library").replace(str(source), "Incoming Camera Roll")
+                window.log_view.setPlainText(text.replace(tmp, "Demo workspace"))
+            _capture(window, app, output_dir, name)
+        window._allow_real_close = True
         window.close()
         app.processEvents()
 
 
 def main() -> None:
-    output_dir = REPO_ROOT / "docs" / "screenshots"
-    capture(output_dir)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=Path, default=REPO_ROOT / "docs" / "screenshots")
+    parser.add_argument('--width', type=int, default=1440)
+    parser.add_argument('--height', type=int, default=900)
+    args = parser.parse_args()
+    output_dir = args.output
+    capture(output_dir, args.width, args.height)
+    sources = ("photo_manager_qt.py", "photo_manager_theme.py", "scripts/capture_demo_screenshots.py")
+    manifest = {"width": args.width, "height": args.height,
+                "sources": {name: hashlib.sha256((REPO_ROOT / name).read_bytes()).hexdigest() for name in sources},
+                "images": {name: hashlib.sha256((output_dir / name).read_bytes()).hexdigest()
+                           for name in SCREENSHOTS.values()}}
+    (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Updated screenshots in {output_dir}")
 
 

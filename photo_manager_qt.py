@@ -37,6 +37,7 @@ from photo_manager_core import (
     weekly_schedule_summary,
 )
 from photo_manager_import import copy_verified, originals_verified
+from photo_manager_theme import TOKENS, install_typography, status_style, stylesheet
 from photo_manager_index import (
     default_index_path,
     import_blur_csv,
@@ -116,6 +117,7 @@ try:
         QMessageBox,
         QListWidget,
         QScrollArea,
+        QSizePolicy,
         QStyle,
         QSystemTrayIcon,
         QTabWidget,
@@ -316,33 +318,7 @@ class WeeklyScheduleDialog(QDialog):
         self.use_daily_btn.clicked.connect(self._accept_daily_hours)
 
         self._init_cells(schedule_text, fallback_hours)
-        self.setStyleSheet(
-            """
-            QDialog { background: #191c22; color: #d7dde8; }
-            QLabel#scheduleHint { color: #cdd4e2; padding: 4px; }
-            QTableWidget {
-                gridline-color: #343a46;
-                background: #1f232b;
-                alternate-background-color: #252a34;
-                color: #d7dde8;
-                border: 1px solid #3a3f49;
-            }
-            QHeaderView::section {
-                background: #2a3039;
-                color: #d7dde8;
-                border: 1px solid #3a3f49;
-                padding: 4px;
-            }
-            QPushButton {
-                background: #2a3448;
-                border: 1px solid #4a5e84;
-                border-radius: 5px;
-                padding: 6px 10px;
-                color: #dce8ff;
-            }
-            QPushButton:hover { background: #334464; }
-            """
-        )
+        self.setStyleSheet(stylesheet())
 
     def _init_cells(self, schedule_text: str, fallback_hours: str) -> None:
         try:
@@ -376,10 +352,10 @@ class WeeklyScheduleDialog(QDialog):
     def _set_allowed(self, item: QTableWidgetItem, allowed: bool) -> None:
         item.setData(Qt.ItemDataRole.UserRole, allowed)
         if allowed:
-            item.setBackground(QColor("#23704a"))
+            item.setBackground(QColor(TOKENS["accent"]))
             item.setToolTip("Sync allowed")
         else:
-            item.setBackground(QColor("#2b303a"))
+            item.setBackground(QColor(TOKENS["surface"]))
             item.setToolTip("Sync blocked")
 
     def _toggle_item(self, item: QTableWidgetItem) -> None:
@@ -685,6 +661,19 @@ class SyncWatchService:
                 self.app.log(f"[watch] Could not delete source {path.name}: {exc}")
 
 
+class ImagePreview(QLabel):
+    """Keep preview pixels proportional when a splitter or DPI setting changes."""
+    def resizeEvent(self, event) -> None:
+        original = self.property("previewOriginal")
+        if isinstance(original, QPixmap) and not original.isNull():
+            ratio = self.devicePixelRatioF()
+            scaled = original.scaled(self.size() * ratio, Qt.AspectRatioMode.KeepAspectRatio,
+                                     Qt.TransformationMode.SmoothTransformation)
+            scaled.setDevicePixelRatio(ratio)
+            self.setPixmap(scaled)
+        super().resizeEvent(event)
+
+
 class PhotoManagerWindow(QMainWindow):
     def __init__(self, app_icon: Optional[QIcon] = None) -> None:
         super().__init__()
@@ -714,8 +703,9 @@ class PhotoManagerWindow(QMainWindow):
         self.setWindowTitle("Photo Manager Pro")
         if not self.app_icon.isNull():
             self.setWindowIcon(self.app_icon)
-        self.resize(1440, 810)
-        self.setMinimumSize(1120, 680)
+        self.resize(1440, 900)
+        self.setMinimumSize(1120, 720)
+        install_typography()
         self._build_ui()
         self._apply_theme()
         self._build_tray()
@@ -837,7 +827,7 @@ class PhotoManagerWindow(QMainWindow):
         bar = QWidget()
         bar.setObjectName("commandBar")
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(26, 14, 18, 14)
+        layout.setContentsMargins(16, 8, 16, 8)
         layout.setSpacing(12)
 
         title_block = QWidget()
@@ -860,7 +850,7 @@ class PhotoManagerWindow(QMainWindow):
         title_layout.setSpacing(3)
         app_title = QLabel("Photo Manager Pro")
         app_title.setObjectName("appTitle")
-        app_subtitle = QLabel("Local photo sync, review, cleanup, and metadata")
+        app_subtitle = QLabel("Photo library workspace")
         app_subtitle.setObjectName("appSubtitle")
         title_layout.addWidget(app_title)
         title_layout.addWidget(app_subtitle)
@@ -870,8 +860,8 @@ class PhotoManagerWindow(QMainWindow):
         self.bg_status_label = QLabel("Watching paused")
         self.bg_status_label.setObjectName("statusPill")
         self.bg_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.bg_status_label.setFixedHeight(42)
-        self.bg_status_label.setMinimumWidth(170)
+        self.bg_status_label.setMinimumHeight(24)
+        self.bg_status_label.setMinimumWidth(140)
         self.compare_btn = QPushButton("Preview Sync Plan")
         self.compare_btn.setObjectName("secondaryAction")
         self.run_sync_btn = QPushButton("Sync Now")
@@ -900,37 +890,43 @@ class PhotoManagerWindow(QMainWindow):
             self.open_settings_btn,
             self.open_diagnostics_btn,
         ):
-            btn.setMinimumHeight(40)
+            btn.setMinimumHeight(32)
 
         layout.addWidget(title_block, stretch=1)
-        layout.addWidget(self.bg_status_label)
         layout.addWidget(self.compare_btn)
         layout.addWidget(self.run_sync_btn)
         layout.addWidget(self.start_background_btn)
         layout.addWidget(self.stop_background_btn)
-        layout.addSpacing(6)
-        layout.addWidget(self.open_settings_btn)
-        layout.addWidget(self.open_diagnostics_btn)
+        # Settings and diagnostics are already present in the persistent sidebar.
+        for button in (self.open_settings_btn, self.open_diagnostics_btn):
+            button.setParent(bar)
+            button.hide()
+        self.statusBar().addPermanentWidget(self.bg_status_label)
+        self.statusBar().showMessage("Ready")
         return bar
 
     def _build_sidebar(self) -> QWidget:
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(258)
+        sidebar.setFixedWidth(192)
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(10, 18, 10, 12)
+        layout.setContentsMargins(8, 12, 8, 8)
         layout.setSpacing(8)
 
         self.nav_buttons: List[QPushButton] = []
+        layout.addWidget(QLabel("Library"))
         self._add_nav_button(layout, 0, "⌂", "Dashboard")
         self._add_nav_button(layout, 1, "▧", "Gallery")
         self._add_nav_button(layout, 2, "□", "Duplicates")
         self._add_nav_button(layout, 3, "⌁", "Cleanup")
         self._add_nav_button(layout, 4, "✧", "AI Metadata")
+        layout.addWidget(self._sidebar_separator())
+        layout.addWidget(QLabel("Transfer"))
         self._add_nav_button(layout, 5, "▤", "Sync Plan")
         self._add_nav_button(layout, 6, "☁", "Cloud Sync")
         self._add_nav_button(layout, 7, "▯", "Phone Connect")
         layout.addWidget(self._sidebar_separator())
+        layout.addWidget(QLabel("Application"))
         self._add_nav_button(layout, 8, "⚙", "Settings")
         self._add_nav_button(layout, 9, "⚕", "Diagnostics")
         layout.addStretch(1)
@@ -965,11 +961,14 @@ class PhotoManagerWindow(QMainWindow):
         return sidebar
 
     def _add_nav_button(self, layout: QVBoxLayout, tab_index: int, icon: str, label: str) -> QPushButton:
-        button = QPushButton(f"{icon}   {label}")
+        button = QPushButton(label)
+        button.setAccessibleName(label)
+        button.setShortcut(f"Alt+{(tab_index + 1) % 10}")
+        button.setToolTip(f"{label} (Alt+{(tab_index + 1) % 10})")
         button.setObjectName("navButton")
         button.setCheckable(True)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.setMinimumHeight(46)
+        button.setMinimumHeight(32)
         button.setProperty("tabIndex", tab_index)
         button.clicked.connect(lambda _checked=False, index=tab_index: self.workspace_tabs.setCurrentIndex(index))
         self.nav_buttons.append(button)
@@ -1188,12 +1187,12 @@ class PhotoManagerWindow(QMainWindow):
         blur_layout.addWidget(self.blur_autodelete_btn, 7, 0, 1, 2)
 
         settings_layout.addWidget(config_group, 0, 0)
-        settings_layout.addWidget(sync_group, 0, 1, 2, 1)
-        settings_layout.addWidget(index_group, 1, 0)
-        settings_layout.addWidget(service_group, 2, 0)
-        settings_layout.addWidget(blur_group, 2, 1)
+        settings_layout.addWidget(sync_group, 1, 0)
+        settings_layout.addWidget(index_group, 2, 0)
+        settings_layout.addWidget(service_group, 3, 0)
+        settings_layout.addWidget(blur_group, 4, 0)
         settings_layout.setColumnStretch(0, 1)
-        settings_layout.setColumnStretch(1, 1)
+        settings_layout.setColumnStretch(1, 0)
         scroll.setWidget(settings_panel)
         page_layout.addWidget(scroll, stretch=1)
         return self.settings_tab
@@ -1451,9 +1450,15 @@ class PhotoManagerWindow(QMainWindow):
         table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        for column, heading in enumerate(headers):
+            if heading in {"ID", "Year", "Files", "Size", "Time", "Mode", "Status", "Reason", "Created", "Backend"}:
+                table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         table.verticalHeader().setVisible(False)
         table.setAlternatingRowColors(True)
         table.setShowGrid(False)
+        table.verticalHeader().setDefaultSectionSize(32)
+        table.setWordWrap(False)
+        table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         return table
 
     def _metric_card(
@@ -1461,50 +1466,35 @@ class PhotoManagerWindow(QMainWindow):
         title: str,
         value: str,
         caption: str,
-        icon: str,
-        accent: str,
     ) -> tuple[QWidget, QLabel, QLabel]:
         card = QWidget()
         card.setObjectName("metricCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(10)
-        top_row = QHBoxLayout()
-        top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(12)
-        icon_label = QLabel(icon)
-        icon_label.setObjectName("metricIcon")
-        icon_label.setFixedSize(44, 44)
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_label.setStyleSheet(
-            f"background: {accent}; border: 1px solid {accent}; border-radius: 22px; color: #ffffff;"
-        )
+        layout.setContentsMargins(8, 8, 8, 10)
+        layout.setSpacing(4)
         title_label = QLabel(title)
         title_label.setObjectName("metricTitle")
-        title_label.setWordWrap(True)
-        top_row.addWidget(icon_label)
-        top_row.addWidget(title_label, stretch=1)
-        layout.addLayout(top_row)
+        layout.addWidget(title_label)
         value_label = QLabel(value)
         value_label.setObjectName("metricValue")
         caption_label = QLabel(caption)
         caption_label.setObjectName("metricCaption")
         caption_label.setWordWrap(True)
         layout.addWidget(value_label)
-        layout.addWidget(caption_label)
-        layout.addStretch(1)
+        card.setToolTip(caption)
+        caption_label.hide()
         return card, value_label, caption_label
 
     def _build_dashboard_tab(self) -> QWidget:
         self.dashboard_tab = QWidget()
         self.dashboard_tab.setObjectName("dashboardTab")
         layout = QVBoxLayout(self.dashboard_tab)
-        layout.setContentsMargins(24, 22, 30, 12)
+        layout.setContentsMargins(20, 16, 20, 12)
         layout.setSpacing(16)
 
         header = self._page_header(
-            "Library Dashboard",
-            "A quick read on sync readiness, cleanup pressure, indexing health, and recent activity.",
+            "Library overview",
+            "Index, import activity and items awaiting review.",
         )
         self.dashboard_refresh_btn = QPushButton("Refresh")
         self.dashboard_refresh_btn.setObjectName("secondaryAction")
@@ -1527,43 +1517,31 @@ class PhotoManagerWindow(QMainWindow):
             "Media Files",
             "0",
             "Indexed library items",
-            "▧",
-            "#0ea5e9",
         )
         present_card, self.metric_present_files, _ = self._metric_card(
-            "Ready Files",
+            "Present files",
             "0",
             "Currently present in library",
-            "✓",
-            "#14b8a6",
         )
         ai_card, self.metric_ai_count, _ = self._metric_card(
             "AI Metadata",
             "0",
             "Captions, tags, and OCR rows",
-            "AI",
-            "#8b5cf6",
         )
         blur_card, self.metric_blur_count, _ = self._metric_card(
             "Blur Review",
             "0",
             "Candidate photos to inspect",
-            "⌗",
-            "#f97316",
         )
         queue_card, self.metric_queue_count, _ = self._metric_card(
             "Cleanup Queue",
             "0",
             "Files waiting for review",
-            "⌫",
-            "#d97706",
         )
         errors_card, self.metric_error_count, _ = self._metric_card(
             "Sync Errors",
             "0",
             "Events needing attention",
-            "!",
-            "#ef4444",
         )
         for col, card in enumerate((total_card, present_card, ai_card, blur_card, queue_card, errors_card)):
             metrics.addWidget(card, 0, col)
@@ -1573,12 +1551,8 @@ class PhotoManagerWindow(QMainWindow):
         next_card = QWidget()
         next_card.setObjectName("libraryIndexCard")
         next_layout = QHBoxLayout(next_card)
-        next_layout.setContentsMargins(26, 22, 26, 22)
+        next_layout.setContentsMargins(16, 12, 16, 12)
         next_layout.setSpacing(28)
-        library_art = QLabel("▧\n⌕")
-        library_art.setObjectName("libraryIndexArt")
-        library_art.setFixedSize(150, 118)
-        library_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         next_text = QWidget()
         next_text_layout = QVBoxLayout(next_text)
         next_text_layout.setContentsMargins(0, 0, 0, 0)
@@ -1593,12 +1567,12 @@ class PhotoManagerWindow(QMainWindow):
         next_text_layout.addWidget(self.next_action_title_label)
         next_text_layout.addWidget(self.next_action_body_label)
         action_row = QHBoxLayout()
-        action_row.setContentsMargins(0, 12, 0, 0)
+        action_row.setContentsMargins(0, 4, 0, 0)
         action_row.setSpacing(10)
         self.next_action_btn = QPushButton("Open Settings")
         self.next_action_btn.setObjectName("primaryAction")
         self.next_action_btn.setIcon(self._standard_icon("SP_FileDialogContentsView"))
-        self.next_settings_btn = QPushButton("Learn how it works")
+        self.next_settings_btn = QPushButton("About this workflow")
         self.next_settings_btn.setObjectName("quietAction")
         self.next_settings_btn.setIcon(self._standard_icon("SP_MessageBoxQuestion"))
         action_row.addWidget(self.next_action_btn)
@@ -1607,15 +1581,7 @@ class PhotoManagerWindow(QMainWindow):
         next_text_layout.addLayout(action_row)
         next_text_layout.addStretch(1)
 
-        separator = QWidget()
-        separator.setObjectName("verticalSeparator")
-        separator.setFixedWidth(1)
-
-        overview = self._build_system_overview()
-        next_layout.addWidget(library_art)
         next_layout.addWidget(next_text, stretch=1)
-        next_layout.addWidget(separator)
-        next_layout.addWidget(overview, stretch=1)
         layout.addWidget(next_card)
 
         self.dashboard_year_table = self._new_table(["Year", "Files"])
@@ -1646,12 +1612,13 @@ class PhotoManagerWindow(QMainWindow):
         lower_grid = QGridLayout()
         lower_grid.setHorizontalSpacing(12)
         lower_grid.setVerticalSpacing(12)
-        lower_grid.addWidget(years_panel, 0, 0)
-        lower_grid.addWidget(folders_panel, 0, 1)
-        lower_grid.addWidget(events_panel, 0, 2)
+        lower_grid.addWidget(years_panel, 1, 0)
+        lower_grid.addWidget(folders_panel, 1, 1)
+        lower_grid.addWidget(events_panel, 0, 0, 1, 2)
         lower_grid.setColumnStretch(0, 1)
         lower_grid.setColumnStretch(1, 1)
-        lower_grid.setColumnStretch(2, 2)
+        lower_grid.setRowStretch(0, 3)
+        lower_grid.setRowStretch(1, 2)
         layout.addLayout(lower_grid, stretch=1)
 
         self.dashboard_summary_label = QLabel("Index dashboard not loaded yet.")
@@ -1662,66 +1629,13 @@ class PhotoManagerWindow(QMainWindow):
         self._set_dashboard_empty_states()
         return self.dashboard_tab
 
-    def _build_system_overview(self) -> QWidget:
-        panel = QWidget()
-        panel.setObjectName("systemOverview")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-        title = QLabel("System Overview")
-        title.setObjectName("systemOverviewTitle")
-        layout.addWidget(title)
-
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 2, 0, 0)
-        grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(12)
-        self.dashboard_overview_values: Dict[str, QLabel] = {}
-        items = [
-            ("Files", "files", "#14b8a6"),
-            ("Present", "present", "#14b8a6"),
-            ("AI metadata", "ai", "#14b8a6"),
-            ("Blur candidates", "blur", "#14b8a6"),
-            ("Delete queue", "queue", "#14b8a6"),
-            ("Sync errors", "errors", "#ef4444"),
-        ]
-        for index, (label, key, color) in enumerate(items):
-            row = index % 3
-            column = (index // 3) * 2
-            item = self._overview_item(label, key, color)
-            grid.addWidget(item, row, column, 1, 2)
-        layout.addLayout(grid)
-        layout.addStretch(1)
-        return panel
-
-    def _overview_item(self, label: str, key: str, color: str) -> QWidget:
-        item = QWidget()
-        item.setObjectName("overviewItem")
-        layout = QHBoxLayout(item)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        dot = QLabel()
-        dot.setObjectName("overviewDot")
-        dot.setFixedSize(8, 8)
-        dot.setStyleSheet(f"background: {color}; border-radius: 4px;")
-        name = QLabel(f"{label}:")
-        name.setObjectName("overviewLabel")
-        value = QLabel("0")
-        value.setObjectName("overviewValue")
-        self.dashboard_overview_values[key] = value
-        layout.addWidget(dot)
-        layout.addWidget(name)
-        layout.addWidget(value)
-        layout.addStretch(1)
-        return item
-
     def _build_dashboard_footer(self) -> QWidget:
         footer = QWidget()
         footer.setObjectName("dashboardFooter")
         layout = QHBoxLayout(footer)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-        privacy = QLabel("All data is stored locally and never leaves your device.")
+        privacy = QLabel("Local library · Cloud transfers run only when requested.")
         privacy.setObjectName("footerText")
         version = QLabel(f"Photo Manager Pro v{self._app_version()}")
         version.setObjectName("footerText")
@@ -1775,7 +1689,7 @@ class PhotoManagerWindow(QMainWindow):
         layout.addLayout(
             self._page_header(
                 "Gallery",
-                "Browse indexed media, inspect metadata, and queue cleanup decisions without leaving the app.",
+                "Browse indexed photos. Select an image to inspect its details.",
             )
         )
 
@@ -1792,7 +1706,7 @@ class PhotoManagerWindow(QMainWindow):
         self.gallery_refresh_btn = QPushButton("Load")
         self.gallery_refresh_btn.setObjectName("secondaryAction")
         self.gallery_open_btn = QPushButton("Open")
-        self.gallery_queue_btn = QPushButton("Queue Delete")
+        self.gallery_queue_btn = QPushButton("Queue for review")
         self.gallery_queue_btn.setObjectName("cautionAction")
         filters.addWidget(QLabel("Year"))
         filters.addWidget(self.gallery_year_combo)
@@ -1804,34 +1718,38 @@ class PhotoManagerWindow(QMainWindow):
         filters.addWidget(QLabel("Limit"))
         filters.addWidget(self.gallery_limit_edit)
         filters.addWidget(self.gallery_refresh_btn)
-        filters.addWidget(self.gallery_open_btn)
-        filters.addWidget(self.gallery_queue_btn)
+        actions = QHBoxLayout()
+        actions.addWidget(QLabel("Selected photograph"))
+        actions.addStretch(1)
+        actions.addWidget(self.gallery_open_btn)
+        actions.addWidget(self.gallery_queue_btn)
         layout.addLayout(filters)
+        layout.addLayout(actions)
 
         split = QSplitter()
         split.setChildrenCollapsible(False)
         self.gallery_list = QListWidget()
         self.gallery_list.setViewMode(QListWidget.ViewMode.IconMode)
         self.gallery_list.setIconSize(QSize(160, 160))
-        self.gallery_list.setGridSize(QSize(220, 220))
+        self.gallery_list.setGridSize(QSize(192, 210))
         self.gallery_list.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.gallery_list.setMovement(QListWidget.Movement.Static)
-        self.gallery_list.setSpacing(8)
+        self.gallery_list.setSpacing(4)
         self.gallery_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
 
         preview_panel = QWidget()
         preview_panel.setObjectName("inspectorPanel")
         preview_layout = QVBoxLayout(preview_panel)
         preview_layout.setContentsMargins(8, 0, 0, 0)
-        self.gallery_preview_label = QLabel()
+        self.gallery_preview_label = ImagePreview()
         self.gallery_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.gallery_preview_label.setMinimumSize(320, 320)
-        self.gallery_preview_label.setStyleSheet(
-            "background: #07090d; border: 1px solid #2a3140; border-radius: 8px;"
-        )
+        self.gallery_preview_label.setMinimumSize(240, 220)
+        self.gallery_preview_label.setObjectName("imagePreview")
+        self.gallery_preview_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.gallery_details = QPlainTextEdit()
         self.gallery_details.setReadOnly(True)
-        self.gallery_details.setMinimumHeight(140)
+        self.gallery_details.setMinimumHeight(130)
+        self.gallery_details.setMaximumHeight(190)
         preview_layout.addWidget(self.gallery_preview_label, stretch=1)
         preview_layout.addWidget(self.gallery_details)
 
@@ -1863,7 +1781,7 @@ class PhotoManagerWindow(QMainWindow):
         self.duplicate_queue_all_btn = QPushButton("Queue All")
         self.duplicate_queue_all_btn.setObjectName("cautionAction")
         self.duplicate_open_keep_btn = QPushButton("Open Keep")
-        self.duplicate_open_remove_btn = QPushButton("Open Remove")
+        self.duplicate_open_remove_btn = QPushButton("Open candidate")
         toolbar.addWidget(self.duplicate_scan_btn)
         toolbar.addWidget(self.duplicate_cancel_scan_btn)
         toolbar.addStretch(1)
@@ -1873,28 +1791,35 @@ class PhotoManagerWindow(QMainWindow):
         toolbar.addWidget(self.duplicate_queue_all_btn)
         layout.addLayout(toolbar)
 
-        split = QSplitter()
+        split = QSplitter(Qt.Orientation.Vertical)
         split.setChildrenCollapsible(False)
-        self.duplicates_table = self._new_table(["Remove", "Keep", "Size", "Reason"])
+        self.duplicates_table = self._new_table(["Candidate for review", "Keep original", "Size", "Reason"])
         preview = QWidget()
         preview.setObjectName("inspectorPanel")
         preview_layout = QGridLayout(preview)
-        self.duplicate_keep_preview = QLabel("Keep")
-        self.duplicate_remove_preview = QLabel("Remove")
+        self.duplicate_keep_preview = ImagePreview("Keep")
+        self.duplicate_remove_preview = ImagePreview("Remove")
         for label in (self.duplicate_keep_preview, self.duplicate_remove_preview):
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setMinimumSize(220, 220)
-            label.setStyleSheet("background: #07090d; border: 1px solid #2a3140; border-radius: 8px;")
+            label.setMinimumSize(180, 180)
+            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+            label.setObjectName("imagePreview")
         self.duplicate_details = QPlainTextEdit()
         self.duplicate_details.setReadOnly(True)
-        preview_layout.addWidget(QLabel("Keep"), 0, 0)
-        preview_layout.addWidget(QLabel("Duplicate"), 0, 1)
+        keep_label = QLabel("Keep original")
+        keep_label.setObjectName("keepLabel")
+        candidate_label = QLabel("Duplicate candidate · queue before removal")
+        candidate_label.setObjectName("candidateLabel")
+        preview_layout.addWidget(keep_label, 0, 0)
+        preview_layout.addWidget(candidate_label, 0, 1)
+        self.duplicate_details.setMaximumHeight(100)
+        preview_layout.setRowStretch(1, 1)
         preview_layout.addWidget(self.duplicate_keep_preview, 1, 0)
         preview_layout.addWidget(self.duplicate_remove_preview, 1, 1)
         preview_layout.addWidget(self.duplicate_details, 2, 0, 1, 2)
         split.addWidget(self.duplicates_table)
         split.addWidget(preview)
-        split.setSizes([620, 360])
+        split.setSizes([170, 400])
         layout.addWidget(split, stretch=1)
         return tab
 
@@ -1915,6 +1840,7 @@ class PhotoManagerWindow(QMainWindow):
         self.delete_status_combo.addItems(["queued", "all", "trashed", "cancelled", "missing", "error"])
         self.delete_refresh_btn = QPushButton("Refresh")
         self.delete_trash_selected_btn = QPushButton("Trash Selected")
+        self.delete_trash_selected_btn.setObjectName("dangerAction")
         self.delete_trash_all_btn = QPushButton("Trash All Queued")
         self.delete_trash_all_btn.setObjectName("dangerAction")
         self.delete_cancel_btn = QPushButton("Cancel Selected")
@@ -1987,390 +1913,14 @@ class PhotoManagerWindow(QMainWindow):
         return edit, row
 
     def _apply_theme(self) -> None:
-        self.setStyleSheet(
-            """
-            QMainWindow { background: #070b11; color: #edf5ff; }
-            QWidget#appRoot { background: #070b11; color: #edf5ff; }
-            QWidget#workspaceShell { background: #09111b; }
-            QWidget#dashboardTab { background: #09111b; }
-            QWidget { color: #d8e5f2; font-size: 12px; }
-            QLabel { color: #d8e5f2; }
-            QWidget#commandBar {
-                background: #070b11;
-                border-bottom: 1px solid #1a2736;
-            }
-            QLabel#appLogo {
-                background: #0e2638;
-                border: 1px solid #0ea5e9;
-                border-radius: 9px;
-                color: #67e8f9;
-                font-size: 12px;
-                font-weight: 900;
-            }
-            QLabel#appTitle {
-                color: #f8fbff;
-                font-size: 22px;
-                font-weight: 900;
-            }
-            QLabel#appSubtitle {
-                color: #9aabbd;
-                font-size: 12px;
-                font-weight: 600;
-            }
-            QLabel#statusPill {
-                color: #fbbf24;
-                background: #2a1d08;
-                border: 1px solid #7c4b10;
-                border-radius: 8px;
-                padding: 6px 14px;
-                font-weight: 900;
-            }
-            QWidget#sidebar {
-                background: #09111b;
-                border-right: 1px solid #1a2736;
-            }
-            QPushButton#navButton {
-                background: transparent;
-                border: 1px solid transparent;
-                border-radius: 7px;
-                color: #cbd7e5;
-                font-size: 14px;
-                font-weight: 750;
-                padding: 10px 15px;
-                text-align: left;
-            }
-            QPushButton#navButton:hover {
-                background: #101b27;
-                border-color: #203247;
-                color: #f8fbff;
-            }
-            QPushButton#navButton:checked {
-                background: #0c3548;
-                border: 1px solid #0f7494;
-                color: #f1fbff;
-            }
-            QWidget#sidebarSeparator {
-                background: #1b2a39;
-                margin-top: 8px;
-                margin-bottom: 8px;
-            }
-            QWidget#sidebarInfoCard {
-                background: #0d1723;
-                border: 1px solid #203247;
-                border-radius: 8px;
-            }
-            QLabel#sidebarInfoTitle {
-                color: #9fb0c2;
-                font-size: 11px;
-                font-weight: 800;
-            }
-            QLabel#sidebarInfoBody {
-                color: #c7d2df;
-                font-size: 11px;
-                line-height: 140%;
-            }
-            QPushButton#sidebarMiniButton {
-                background: #101b27;
-                border: 1px solid #25384c;
-                border-radius: 6px;
-                color: #b9c8d8;
-                font-size: 11px;
-                font-weight: 800;
-                padding: 5px 8px;
-            }
-            QPushButton#sidebarMiniButton:hover {
-                border-color: #14b8a6;
-                color: #ecfeff;
-            }
-            QScrollArea#settingsScroll {
-                border: none;
-                background: transparent;
-            }
-            QWidget#settingsViewport, QWidget#settingsPanel {
-                background: transparent;
-            }
-            QScrollBar:vertical {
-                background: #09111b;
-                border: none;
-                width: 12px;
-                margin: 0;
-            }
-            QScrollBar::handle:vertical {
-                background: #2d3d51;
-                border-radius: 6px;
-                min-height: 28px;
-            }
-            QScrollBar::handle:vertical:hover { background: #14b8a6; }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                border: none;
-                background: transparent;
-                height: 0;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: #09111b;
-            }
-            QLabel#pageTitle {
-                color: #f8fbff;
-                font-size: 22px;
-                font-weight: 900;
-            }
-            QLabel#pageSubtitle {
-                color: #a7b4c4;
-                font-size: 13px;
-                font-weight: 500;
-            }
-            QLabel#sectionTitle {
-                color: #edf5ff;
-                font-size: 14px;
-                font-weight: 900;
-            }
-            QGroupBox {
-                border: 1px solid #203247;
-                border-radius: 8px;
-                margin-top: 14px;
-                font-weight: 800;
-                background: #101925;
-                color: #e5edf7;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 12px;
-                padding: 0 7px;
-                color: #5eead4;
-                background: #101925;
-            }
-            QLineEdit, QComboBox, QListWidget, QTableWidget, QPlainTextEdit {
-                border: 1px solid #203247;
-                border-radius: 7px;
-                padding: 6px;
-                background: #0c141f;
-                color: #eef3f8;
-                selection-background-color: #0f766e;
-                selection-color: #f8fbff;
-            }
-            QLineEdit#pairingCode {
-                color: #fff7ed;
-                background: #2a1a10;
-                border-color: #f97316;
-                font-size: 18px;
-                font-weight: 900;
-            }
-            QLineEdit:focus, QComboBox:focus, QListWidget:focus, QTableWidget:focus, QPlainTextEdit:focus {
-                border-color: #14b8a6;
-            }
-            QSplitter::handle {
-                background: #1a2736;
-                margin: 2px;
-            }
-            QTabWidget#workspaceTabs::pane {
-                border: none;
-                background: transparent;
-                top: -1px;
-            }
-            QTabWidget#workspaceTabs::tab-bar {
-                left: 0;
-                top: -6px;
-            }
-            QTabWidget#workspaceTabs QTabBar::base {
-                border: none;
-                background: transparent;
-            }
-            QTabWidget#workspaceTabs QTabBar::tab {
-                background: #0c141f;
-                color: #9fb0c2;
-                padding: 7px 14px;
-                border: 1px solid #203247;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-                margin-right: 4px;
-                font-weight: 800;
-            }
-            QTabWidget#workspaceTabs QTabBar::tab:selected {
-                background: #101925;
-                color: #5eead4;
-                border-bottom-color: #101925;
-            }
-            QTabWidget#workspaceTabs QTabBar::tab:hover {
-                color: #f8fbff;
-                background: #132233;
-            }
-            QTableWidget {
-                gridline-color: #1f3042;
-                alternate-background-color: #101a26;
-                border-top-left-radius: 0;
-                border-top-right-radius: 0;
-            }
-            QHeaderView::section {
-                background: #172434;
-                color: #bcc9d9;
-                padding: 9px;
-                border: none;
-                border-right: 1px solid #203247;
-                font-weight: 800;
-            }
-            QTableWidget::item { padding: 6px; }
-            QListWidget { font-family: 'Segoe UI', sans-serif; }
-            QLabel#pathLabel {
-                color: #a9b8c8;
-                padding: 5px 7px;
-                border: 1px solid #203247;
-                border-radius: 7px;
-                background: #0c141f;
-            }
-            QWidget#metricCard, QWidget#libraryIndexCard, QWidget#tablePanel, QWidget#inspectorPanel {
-                background: #101925;
-                border: 1px solid #203247;
-                border-radius: 8px;
-            }
-            QWidget#metricCard {
-                min-height: 116px;
-            }
-            QLabel#metricIcon {
-                font-size: 17px;
-                font-weight: 900;
-            }
-            QLabel#metricTitle {
-                color: #dbe8f6;
-                font-size: 13px;
-                font-weight: 900;
-            }
-            QLabel#metricValue {
-                color: #f8fbff;
-                font-size: 29px;
-                font-weight: 900;
-            }
-            QLabel#metricCaption {
-                color: #94a5b7;
-                font-size: 12px;
-            }
-            QLabel#libraryIndexArt {
-                background: #0b2233;
-                border: 1px solid #1e4661;
-                border-radius: 8px;
-                color: #7dd3fc;
-                font-size: 34px;
-                font-weight: 900;
-            }
-            QLabel#nextActionTitle {
-                color: #f8fbff;
-                font-size: 21px;
-                font-weight: 900;
-            }
-            QLabel#nextActionBody {
-                color: #b5c2d1;
-                font-size: 13px;
-            }
-            QWidget#verticalSeparator {
-                background: #26384b;
-            }
-            QWidget#systemOverview {
-                background: transparent;
-            }
-            QLabel#systemOverviewTitle {
-                color: #dfe9f6;
-                font-size: 14px;
-                font-weight: 900;
-            }
-            QLabel#overviewLabel, QLabel#overviewValue {
-                color: #c5d2e0;
-                font-size: 13px;
-            }
-            QLabel#overviewValue {
-                color: #edf5ff;
-                font-weight: 800;
-            }
-            QWidget#tablePanel {
-                background: #101925;
-            }
-            QWidget#tablePanelHeader {
-                background: #101925;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-            }
-            QLabel#panelIcon {
-                color: #c8d5e5;
-                font-size: 16px;
-                font-weight: 900;
-            }
-            QLabel#tableEmptyState {
-                color: #a0afc1;
-                font-size: 13px;
-                padding: 26px 20px;
-                background: #0e1722;
-                border-bottom-left-radius: 8px;
-                border-bottom-right-radius: 8px;
-            }
-            QLabel#dashboardStatusLine {
-                color: #fbbf24;
-                background: #291d0b;
-                border: 1px solid #7c4b10;
-                border-radius: 7px;
-                padding: 6px 10px;
-            }
-            QLabel#footerText {
-                color: #8e9daf;
-                font-size: 12px;
-            }
-            QPushButton {
-                border: 1px solid #26384c;
-                border-radius: 7px;
-                padding: 8px 14px;
-                background: #111c28;
-                color: #d8e2ee;
-                font-weight: 800;
-            }
-            QPushButton:hover { background: #172739; border-color: #14b8a6; color: #f8fbff; }
-            QPushButton:pressed { background: #0c141f; }
-            QPushButton:disabled { color: #657184; background: #0d141d; border-color: #1c2836; }
-            QPushButton#primaryAction {
-                background: #14b8b6;
-                border-color: #19d3d0;
-                color: #031314;
-                font-size: 14px;
-                font-weight: 900;
-            }
-            QPushButton#primaryAction:hover { background: #22d3ee; border-color: #67e8f9; color: #031314; }
-            QPushButton#secondaryAction {
-                background: #0b2233;
-                border-color: #0e5f82;
-                color: #d8f3ff;
-                font-weight: 900;
-            }
-            QPushButton#secondaryAction:hover { background: #0e3147; border-color: #38bdf8; color: #f0fbff; }
-            QPushButton#quietAction {
-                background: #0b1119;
-                border-color: #28394d;
-                color: #c2cfdd;
-            }
-            QPushButton#quietAction:hover {
-                background: #111c28;
-                border-color: #4b5d70;
-                color: #f8fbff;
-            }
-            QPushButton#cautionAction {
-                background: #2d210b;
-                border-color: #b86d0d;
-                color: #fde68a;
-            }
-            QPushButton#cautionAction:hover { background: #432f0b; color: #fffbeb; }
-            QPushButton#dangerAction {
-                background: #5f1717;
-                border-color: #ef4444;
-                color: #fee2e2;
-            }
-            QPushButton#dangerAction:hover { background: #991b1b; color: #ffffff; }
-            QPushButton#toolbarButton {
-                background: #0b1119;
-                border-color: #26384c;
-                color: #d0dbe8;
-            }
-            QPushButton#toolbarButton:hover {
-                background: #111c28;
-                border-color: #14b8a6;
-            }
-            QCheckBox { padding: 3px; color: #c4d2e3; }
-            """
-        )
+        self.setStyleSheet(stylesheet())
+        # Labels survive platform font/DPI changes; technical fields have names
+        # even when a compact toolbar uses placeholders instead of form labels.
+        for name, widget in vars(self).items():
+            if isinstance(widget, (QLineEdit, QComboBox, QPlainTextEdit, QListWidget, QTableWidget)):
+                widget.setAccessibleName(name.replace('_', ' ').removesuffix(' edit').removesuffix(' combo'))
+        for form in self.findChildren(QFormLayout):
+            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
     def _build_tray(self) -> None:
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -2677,16 +2227,10 @@ class PhotoManagerWindow(QMainWindow):
             self.lan_status_label.setText(
                 f"Receiver active on port {self.lan_server.actual_port}. Inbox: {self.lan_server.incoming_dir}"
             )
-            self.lan_status_label.setStyleSheet(
-                "color: #bbf7d0; background: #062f20; border: 1px solid #22c55e; "
-                "border-radius: 7px; padding: 5px 7px; font-weight: 800;"
-            )
+            self.lan_status_label.setStyleSheet(status_style(self.lan_server is not None and self.lan_server.running))
         else:
             self.lan_status_label.setText("Receiver stopped")
-            self.lan_status_label.setStyleSheet(
-                "color: #fef3c7; background: #31230a; border: 1px solid #f59e0b; "
-                "border-radius: 7px; padding: 5px 7px; font-weight: 800;"
-            )
+            self.lan_status_label.setStyleSheet(status_style(self.lan_server is not None and self.lan_server.running))
 
     def _refresh_lan_urls(self) -> None:
         try:
@@ -2930,14 +2474,17 @@ class PhotoManagerWindow(QMainWindow):
             return False
 
         self.worker_name = name
+        self.statusBar().showMessage(f"Working: {name}")
 
         def run():
             self.log(f"{name}: started.")
             try:
                 target(*args)
                 self.log(f"{name}: finished.")
+                self._post_ui(lambda: self.statusBar().showMessage(f"Completed: {name}"))
             except Exception as exc:
                 self.log(f"{name}: failed: {exc}")
+                self._post_ui(lambda: self.statusBar().showMessage(f"Failed: {name} · See Diagnostics"))
             finally:
                 self.worker_name = ""
 
@@ -3126,6 +2673,7 @@ class PhotoManagerWindow(QMainWindow):
         if target.width() < 40 or target.height() < 40:
             target = QSize(320, 320)
         label.setText("")
+        label.setProperty("previewOriginal", pixmap)
         label.setPixmap(
             pixmap.scaled(
                 target,
@@ -4144,16 +3692,10 @@ class PhotoManagerWindow(QMainWindow):
             self.stop_background_btn.setVisible(running)
         if running:
             self.bg_status_label.setText("Watching active")
-            self.bg_status_label.setStyleSheet(
-                "color: #99f6e4; background: #062f2a; border: 1px solid #14b8a6; "
-                "border-radius: 8px; padding: 6px 14px; font-weight: 900;"
-            )
+            self.bg_status_label.setStyleSheet(status_style(running))
         else:
             self.bg_status_label.setText("Watching paused")
-            self.bg_status_label.setStyleSheet(
-                "color: #fbbf24; background: #2a1d08; border: 1px solid #7c4b10; "
-                "border-radius: 8px; padding: 6px 14px; font-weight: 900;"
-            )
+            self.bg_status_label.setStyleSheet(status_style(running))
 
     def on_blur_scan(self) -> None:
         cfg = self._get_runtime_or_message()
@@ -4506,10 +4048,50 @@ class PhotoManagerWindow(QMainWindow):
             QTimer.singleShot(0, app.quit)
 
 
+def smoke_test() -> None:
+    """Exercise packaged Qt resources in a disposable library, then exit."""
+    import tempfile
+    from PySide6.QtGui import QFontDatabase
+    global default_config_path, default_legacy_config_path, default_photo_root
+    global default_google_credentials_path, default_google_token_path
+    with tempfile.TemporaryDirectory(prefix="photosync-gui-smoke-") as tmp:
+        root = Path(tmp)
+        (root / "library").mkdir()
+        default_config_path = lambda: root / "config.json"
+        default_legacy_config_path = lambda: root / "legacy.json"
+        default_photo_root = lambda: root / "library"
+        default_google_credentials_path = lambda: root / "credentials.json"
+        default_google_token_path = lambda: root / "token.json"
+        app = QApplication.instance() or QApplication([])
+        app.setStyle("Fusion")
+        PhotoManagerWindow._load_config = PhotoManagerWindow._default_config
+        win = PhotoManagerWindow()
+        try:
+            assert not win.app_icon.isNull(), "Packaged icon is missing"
+            assert "IBM Plex Sans" in QFontDatabase.families(), "Packaged UI font is missing"
+            assert "IBM Plex Mono" in QFontDatabase.families(), "Packaged technical font is missing"
+            for width, height in ((1120, 720), (1920, 1080)):
+                win.resize(width, height)
+                win.show()
+                app.processEvents()
+                for tab in range(win.workspace_tabs.count()):
+                    win.workspace_tabs.setCurrentIndex(tab)
+                    app.processEvents()
+                assert win.width() == width, f"Unexpected minimum width: {win.width()}"
+        finally:
+            win._allow_real_close = True
+            win.close()
+            app.processEvents()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("--minimized", action="store_true", help="Start hidden in the system tray.")
+    parser.add_argument("--smoke-test", action="store_true", help="Validate packaged UI in an isolated temporary library and exit.")
     args, qt_args = parser.parse_known_args()
+    if args.smoke_test:
+        smoke_test()
+        return
 
     sys.argv = [sys.argv[0], *qt_args]
     app = QApplication(sys.argv)

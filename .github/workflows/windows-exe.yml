@@ -1,5 +1,11 @@
 name: Windows EXE
 on:
+  pull_request:
+    paths:
+      - '*.py'
+      - 'photosync_tool_assets/**'
+      - 'pyproject.toml'
+      - '.github/workflows/windows-exe.yml'
   workflow_call:
   workflow_dispatch:
 permissions:
@@ -9,8 +15,8 @@ jobs:
     name: Build Windows executable
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.13'
       - name: Install package and PyInstaller
@@ -26,10 +32,12 @@ jobs:
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = 'offscreen'
-          $process = Start-Process -FilePath 'dist/PhotoManagerPro.exe' -PassThru
-          Start-Sleep -Seconds 20
-          if ($process.HasExited) { throw "Executable exited during startup: $($process.ExitCode)" }
-          Stop-Process -Id $process.Id
+          $process = Start-Process -FilePath 'dist/PhotoManagerPro.exe' -ArgumentList '--smoke-test' -PassThru
+          if (-not $process.WaitForExit(60000)) {
+            Stop-Process -Id $process.Id
+            throw 'Executable smoke test timed out'
+          }
+          if ($process.ExitCode -ne 0) { throw "Executable smoke test failed: $($process.ExitCode)" }
       - uses: actions/upload-artifact@v4
         with:
           name: PhotoManagerPro-windows

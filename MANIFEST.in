@@ -3,7 +3,9 @@ include CHANGELOG.md
 include CONTRIBUTING.md
 include LICENSE
 include RELEASE.md
-recursive-include photosync_tool_assets *.png *.ico
+recursive-include photosync_tool_assets *.png *.ico *.ttf OFL.txt
+include DESIGN.md
+include AGENTS.md
 
 exclude photo_manager_config.json
 exclude photo_manager_index.sqlite3*

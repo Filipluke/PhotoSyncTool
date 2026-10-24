@@ -104,3 +104,85 @@ def test_gui_watcher_keeps_sources_on_failure_or_preview(tmp_path, monkeypatch, 
     assert source.read_bytes() == b'photo'
     if dry_run:
         assert not cfg.root.exists()
+
+
+@pytest.mark.parametrize('size', [(1120, 720), (1920, 1080)])
+def test_workspace_sizes_keyboard_and_packaged_fonts(monkeypatch, tmp_path, size):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QFontDatabase
+    from PySide6.QtTest import QTest, QSignalSpy
+    from PySide6.QtWidgets import QPushButton, QScrollArea
+    (tmp_path / 'library').mkdir()
+    monkeypatch.setattr(photo_manager_qt, 'default_photo_root', lambda: tmp_path / 'library')
+    monkeypatch.setattr(photo_manager_qt, 'default_config_path', lambda: tmp_path / 'config.json')
+    monkeypatch.setattr(photo_manager_qt, 'default_legacy_config_path', lambda: tmp_path / 'legacy.json')
+    monkeypatch.setattr(photo_manager_qt, 'default_google_credentials_path', lambda: tmp_path / 'credentials.json')
+    monkeypatch.setattr(photo_manager_qt, 'default_google_token_path', lambda: tmp_path / 'token.json')
+    app = _app()
+    window = PhotoManagerWindow()
+    try:
+        window.resize(*size)
+        window.show()
+        app.processEvents()
+        assert (window.width(), window.height()) == size
+        assert {'IBM Plex Sans', 'IBM Plex Mono'} <= set(QFontDatabase.families())
+        for index in range(window.workspace_tabs.count()):
+            window.workspace_tabs.setCurrentIndex(index)
+            app.processEvents()
+            page = window.workspace_tabs.currentWidget()
+            for button in page.findChildren(QPushButton):
+                if not button.isVisibleTo(page):
+                    continue
+                ancestor = button.parentWidget()
+                in_scroll_area = False
+                while ancestor and ancestor is not page:
+                    in_scroll_area |= isinstance(ancestor, QScrollArea)
+                    ancestor = ancestor.parentWidget()
+                if not in_scroll_area:
+                    top_left = button.mapTo(page, button.rect().topLeft())
+                    bottom_right = button.mapTo(page, button.rect().bottomRight())
+                    assert page.rect().contains(top_left), button.text()
+                    assert page.rect().contains(bottom_right), button.text()
+                    assert button.width() >= button.minimumSizeHint().width(), button.text()
+        window.activateWindow()
+        window.setFocus()
+        assert QTest.qWaitForWindowActive(window, 1000)
+        changed = QSignalSpy(window.workspace_tabs.currentChanged)
+        QTest.keyClick(window, Qt.Key.Key_2, Qt.KeyboardModifier.AltModifier)
+        app.processEvents()
+        assert changed.count() or changed.wait(1000)
+        assert window.workspace_tabs.currentIndex() == 1
+        assert window.gallery_search_edit.accessibleName()
+        assert window.gallery_queue_btn.objectName() == 'cautionAction'
+        assert window.delete_trash_selected_btn.objectName() == 'dangerAction'
+    finally:
+        window._allow_real_close = True
+        window.close()
+        app.processEvents()
+
+
+def test_cleanup_confirmation_defaults_to_no(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from PySide6.QtWidgets import QMessageBox
+    (tmp_path / 'library').mkdir()
+    monkeypatch.setattr(photo_manager_qt, 'default_photo_root', lambda: tmp_path / 'library')
+    monkeypatch.setattr(photo_manager_qt, 'default_config_path', lambda: tmp_path / 'config.json')
+    monkeypatch.setattr(photo_manager_qt, 'default_legacy_config_path', lambda: tmp_path / 'legacy.json')
+    app = _app()
+    window = PhotoManagerWindow()
+    try:
+        monkeypatch.setattr(window, '_get_runtime_or_message', lambda: SimpleNamespace(root=tmp_path))
+        monkeypatch.setattr(window, '_selected_delete_ids', lambda: [1])
+        monkeypatch.setattr(photo_manager_qt, 'list_delete_queue', lambda *a, **kw: [SimpleNamespace(id=1)])
+        monkeypatch.setattr(window, '_start_worker', lambda *a: pytest.fail('Cancelled cleanup must not start a worker'))
+        def decline(parent, title, message, buttons, default):
+            assert default == QMessageBox.No
+            assert 'recycle bin' in message
+            return QMessageBox.No
+        monkeypatch.setattr(QMessageBox, 'question', decline)
+        window.on_delete_queue_trash_selected()
+        window.on_delete_queue_trash_all()
+    finally:
+        window._allow_real_close = True
+        window.close()
+        app.processEvents()

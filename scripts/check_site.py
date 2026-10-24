@@ -6,7 +6,9 @@ image requests. Requires Chromium or Google Chrome; no Python test dependencies.
 """
 from __future__ import annotations
 
+import hashlib
 import html
+from html.parser import HTMLParser
 import http.server
 import json
 import os
@@ -46,6 +48,8 @@ const ready = doc => [...doc.images].every(img => img.complete && img.naturalWid
   assert(frame.contentWindow.devicePixelRatio === scale, 'Unexpected device scale');
   for (const img of doc.images) img.loading = 'eager';
   await wait(() => ready(doc), 'initial images');
+  await doc.fonts.ready;
+  assert([...doc.fonts].filter(font => font.status === 'loaded').length === 3, 'Bundled fonts must load');
   const hero = doc.getElementById('hero-screenshot');
   assert(hero.currentSrc.startsWith('data:image/webp;base64,'), 'Hero must not wait for an image request');
   assert(!hero.closest('picture').querySelector('source'), 'Hero must not select an external source');
@@ -87,6 +91,15 @@ const ready = doc => [...doc.images].every(img => img.complete && img.naturalWid
   assert(offlineHero.complete && offlineHero.naturalWidth === 960 && !offlineHero.closest('picture').hidden,
     'Hero must remain visible even when every image request fails');
   results.hero.visibleWithImageNetworkBlocked = true;
+  frame.setAttribute('sandbox', 'allow-same-origin');
+  doc = await open('/no-js');
+  for (const img of doc.images) img.loading = 'eager';
+  await wait(() => ready(doc), 'images without JavaScript');
+  assert(!doc.documentElement.classList.contains('js'), 'Scripts must be disabled for this check');
+  assert(doc.querySelector('#download a[href$="PhotoManagerPro.exe"]'), 'Windows download without JavaScript');
+  assert(doc.querySelector('#install-command').textContent.includes('photo-manager-pro'), 'Python instructions without JavaScript');
+  assert(doc.querySelector('noscript a[href$="dashboard.png"]'), 'Alternate screenshots without JavaScript');
+  results.noJavaScript = 'PASS';
   results.status = 'PASS';
 } catch(error) { results.status='FAIL'; results.error=String(error); }
 document.getElementById('results').textContent=JSON.stringify(results);
@@ -111,9 +124,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
-        for prefix in ('/no-webp', '/no-images'):
+        for prefix in ('/no-webp', '/no-images', '/no-js'):
             if path.startswith(prefix + '/'):
-                if '/screenshots/' in path and (path.endswith('.webp') or prefix == '/no-images'):
+                if prefix != '/no-js' and '/screenshots/' in path and (path.endswith('.webp') or prefix == '/no-images'):
                     self.send_error(404, 'Simulated image failure')
                     return
                 self.path = self.path[len(prefix):]
@@ -121,7 +134,74 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
 
+def check_assets() -> None:
+    """Fail before rendering if a critical asset is missing, corrupt or stale."""
+    from PIL import Image
+    from urllib.parse import unquote
+    class References(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.paths = set()
+            self.ids = set()
+            self.anchors = set()
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if 'id' in attrs:
+                self.ids.add(attrs['id'])
+            for key in ('src', 'href'):
+                value = attrs.get(key, '')
+                url = urlsplit(value)
+                if value.startswith('#') and value != '#':
+                    self.anchors.add(value[1:])
+                elif url.path and not url.scheme and not url.netloc:
+                    self.paths.add(unquote(url.path))
+    page = References()
+    page.feed((ROOT / 'index.html').read_text(encoding='utf-8'))
+    assert page.anchors <= page.ids, f'Broken anchors: {page.anchors - page.ids}'
+    for name in page.paths:
+        assert (ROOT / name).is_file(), f'Missing referenced asset: {name}'
+    for name in ('gallery', 'dashboard', 'duplicates'):
+        for suffix in ('.png', '-640.webp', '-960.webp', '-1440.webp'):
+            path = ROOT / 'screenshots' / (name + suffix)
+            with Image.open(path) as image:
+                image.verify()
+    for font in ('IBMPlexSans.ttf', 'IBMPlexMono-Regular.ttf', 'IBMPlexSerif-Regular.ttf', 'OFL.txt'):
+        web = ROOT / 'assets' / 'fonts' / font
+        bundled = ROOT.parent / 'photosync_tool_assets' / 'fonts' / font
+        assert web.read_bytes() == bundled.read_bytes(), f'Font/license drift: {font}'
+    manifest = json.loads((ROOT / 'screenshots' / 'manifest.json').read_text())
+    assert manifest['sources'], 'Screenshot provenance is empty'
+    for name in ('photo_manager_qt.py', 'photo_manager_theme.py', 'scripts/capture_demo_screenshots.py'):
+        digest = hashlib.sha256((ROOT.parent / name).read_bytes()).hexdigest()
+        assert manifest['sources'].get(name) == digest, f'Stale screenshot source: {name}; recapture first'
+    originals = {f'{name}.png' for name in ('dashboard', 'gallery', 'duplicates', 'cleanup', 'settings', 'diagnostics')}
+    for name in originals:
+        path = ROOT / 'screenshots' / name
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert manifest.get('images', {}).get(name) == digest, f'Stale screenshot image: {name}; recapture first'
+        with Image.open(path) as image:
+            image.verify()
+    # GitHub renders these committed PNGs, not the images generated by Pages CI.
+    for markdown in (ROOT.parent / 'README.md', *ROOT.rglob('*.md')):
+        content = re.sub(r'```.*?```', '', markdown.read_text(encoding='utf-8'), flags=re.S)
+        screenshots = set()
+        for target in re.findall(r'!\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)', content):
+            url = urlsplit(target)
+            if url.scheme or url.netloc:
+                assert '/screenshots/' not in url.path, f'Use branch-relative screenshots in {markdown.name}: {target}'
+                continue
+            path = (markdown.parent / unquote(url.path)).resolve()
+            assert path.is_file(), f'Broken Markdown image in {markdown.name}: {target}'
+            with Image.open(path) as image:
+                image.verify()
+            if path.parent == (ROOT / 'screenshots').resolve():
+                screenshots.add(path.name)
+        if markdown in (ROOT.parent / 'README.md', ROOT / 'SCREENSHOTS.md'):
+            assert originals <= screenshots, f'Missing shared screenshots in {markdown.name}: {originals - screenshots}'
+
+
 def main() -> None:
+    check_assets()
     browser = os.environ.get('SITE_BROWSER') or next(
         (path for name in ('google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser')
          if (path := shutil.which(name))), None

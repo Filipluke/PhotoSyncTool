@@ -14,6 +14,8 @@ WIDTHS = (640, 960, 1440)
 def embed_hero(screenshots: Path) -> None:
     """Deliver the first preview with the HTML, without another network request."""
     with Image.open(screenshots / "gallery.png") as original:
+        if original.width * 900 != original.height * 1440:
+            raise ValueError("Website captures must have the canonical 1440:900 aspect ratio")
         image = original.convert("RGB").resize((960, 600), Image.Resampling.LANCZOS)
         for quality in (72, 68, 64, 60):
             output = BytesIO()

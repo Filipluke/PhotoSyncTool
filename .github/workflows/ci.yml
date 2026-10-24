@@ -23,13 +23,15 @@ jobs:
           - os: ubuntu-latest
             python-version: '3.13'
           - os: windows-latest
+            python-version: '3.10'
+          - os: windows-latest
             python-version: '3.13'
     env:
       QT_QPA_PLATFORM: offscreen
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Install Qt runtime libraries
         if: runner.os == 'Linux'
@@ -38,7 +40,7 @@ jobs:
           sudo apt-get install -y libegl1 libgl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -57,6 +59,19 @@ jobs:
       - name: Run tests
         run: python -m pytest
 
+      - name: Repeat concurrent initialization and import regression
+        shell: bash
+        run: |
+          for attempt in {1..20}; do
+            echo "Concurrency regression $attempt/20"
+            python -m pytest -q tests/test_import_reliability.py::test_concurrent_imports_never_overwrite tests/test_sqlite_initialization.py
+          done
+
+      - name: Check GUI at high DPI
+        env:
+          QT_SCALE_FACTOR: '2'
+        run: python -m pytest -q tests/test_photo_manager_qt_smoke.py
+
       - name: Require GUI dependency
         run: python -c "from PySide6.QtWidgets import QApplication"
 
@@ -64,12 +79,12 @@ jobs:
         run: python -m build
 
       - name: Check package metadata
-        run: python -m twine check dist/*.tar.gz dist/*.whl
+        run: |
+          python -m twine check dist/*.tar.gz dist/*.whl
+          python scripts/check_distributions.py dist
 
       - name: Smoke test built wheel outside the checkout
         shell: bash
         run: |
           python -m pip install --force-reinstall --no-deps dist/*.whl
-          cd "$RUNNER_TEMP"
-          photo-sorter --help
-          python -c "from importlib.metadata import version; import photo_manager_import; from photo_manager_qt import PhotoManagerWindow; from PySide6.QtWidgets import QApplication; app = QApplication([]); print(version('photosync-tool')); print(photo_manager_import.__file__)"
+          python scripts/smoke_installed.py

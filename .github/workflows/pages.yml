@@ -4,31 +4,31 @@ on:
   push:
     branches: [main]
     paths:
+      - "README.md"
       - "docs/**"
+      - "photo_manager*.py"
+      - "photosync_tool_assets/**"
+      - "pyproject.toml"
       - "scripts/capture_demo_screenshots.py"
       - "scripts/build_site_images.py"
       - "scripts/check_site.py"
       - ".github/workflows/pages.yml"
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Install Qt runtime libraries
         run: |
@@ -36,7 +36,7 @@ jobs:
           sudo apt-get install -y libegl1 libgl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.1.0
         with:
           python-version: "3.13"
           cache: pip
@@ -45,6 +45,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
+
+      - name: Check committed README and screenshot assets
+        run: python -c "from scripts.check_site import check_assets; check_assets()"
 
       - name: Capture current app screenshots
         env:
@@ -59,14 +62,25 @@ jobs:
           python scripts/check_site.py
           SITE_SCALE=2 python scripts/check_site.py
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
       - name: Upload static site
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs
 
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
