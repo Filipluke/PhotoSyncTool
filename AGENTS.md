@@ -1,7 +1,7 @@
 # PhotoSyncTool contributor rules
 
 Read DESIGN.md before changing UI or the website. Preserve the shared IBM Plex,
-warm neutral, graphite, forest and copper design system and bundled font licenses.
+navy, steel blue and restrained blue design system and bundled font licenses.
 Use native Qt widgets and existing static HTML/CSS/JS. No new frontend framework.
 
 Preserve atomic no-overwrite imports, full SHA256 verification, durable receipts,

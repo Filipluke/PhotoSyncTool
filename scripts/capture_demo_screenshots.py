@@ -307,7 +307,9 @@ def main() -> None:
     capture(output_dir, args.width, args.height)
     sources = ("photo_manager_qt.py", "photo_manager_theme.py", "scripts/capture_demo_screenshots.py")
     manifest = {"width": args.width, "height": args.height,
-                "sources": {name: hashlib.sha256((REPO_ROOT / name).read_bytes()).hexdigest() for name in sources}}
+                "sources": {name: hashlib.sha256((REPO_ROOT / name).read_bytes()).hexdigest() for name in sources},
+                "images": {name: hashlib.sha256((output_dir / name).read_bytes()).hexdigest()
+                           for name in SCREENSHOTS.values()}}
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Updated screenshots in {output_dir}")
 

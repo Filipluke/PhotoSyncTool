@@ -3,7 +3,8 @@
 ## Product
 Photographic archive meets precision engineering. The application is a workspace
 for files, verification and deliberate cleanup. Photographs and actionable state
-take precedence over decoration. Keep the existing Qt workflows and safety checks.
+take precedence over decoration. Use navy surfaces, steel blue and restrained blue
+accents. Keep the existing typography, layout, Qt workflows, icon and safety checks.
 
 ## Tokens
 The desktop source is `photo_manager_theme.py`; web equivalents are in
@@ -11,16 +12,22 @@ The desktop source is `photo_manager_theme.py`; web equivalents are in
 
 | Role | Desktop | Website |
 |---|---|---|
-| Background | #202320 | #f4f1e9 |
-| Surface | #292d29 | #fffdf7 |
-| Foreground | #f0eee6 | #242b26 |
-| Secondary text | #b7beb4 | #59645c |
-| Border | #4b534b | #cbd0c5 |
-| Accent / selection | #355d49 | #294c3b |
-| Focus / copper | #d6a478 | #87532f |
+| Background | #1c2430 | #f0f3f7 |
+| Surface | #242e3c | #fbfcfe |
+| Foreground | #edf1f5 | #202d3d |
+| Secondary text | #b4bfcd | #52647b |
+| Border | #46576d | #c7d1de |
+| Accent / selection | #345776 | #2e4e70 |
+| Accent hover | #40688c | #3a6188 |
+| Keyboard focus | #91b6db | #376c9d |
 | Warning | #e4bb7e | #785124 |
 | Success | #b2d1b8 | #315b3e |
 | Destructive | #edb0a7 on #66342f | #8d352d |
+
+Blue identifies navigation, selection, primary actions and keyboard focus. Green,
+amber and red are reserved for success, warning and destructive states, not brand
+decoration. Use flat fills; never tint photographs. Keep normal text contrast at
+least 4.5:1 and visible focus contrast at least 3:1 against its adjacent surface.
 
 ## Typography and licensing
 Bundle IBM Plex Sans (UI), IBM Plex Mono Regular (paths, logs, counters), and
@@ -52,7 +59,7 @@ without JavaScript, and with reduced motion. No essential hover-only controls.
 Use readable contrast, no decorative animation and no truncated critical actions.
 
 ## Prohibited patterns
-No navy/cyan dashboard, purple gradients, glows, glass panels, oversized rounded
+No neon cyan accents, decorative gradients, glows, glass panels, oversized rounded
 cards, floating badges, fake statistics, simulated product screenshots, generic
 SaaS slogans or repeated uppercase eyebrow headings. No frontend framework.
 
@@ -67,4 +74,9 @@ Inspect gallery, dashboard, duplicates, cleanup, settings and diagnostics captur
 Run `python scripts/check_site.py` and repeat with `SITE_SCALE=2`; missing
 critical assets must fail the build even if browser fallback is graceful.
 Capture before/after images for substantial changes, and record platforms actually
-tested. Screenshots on the website must disclose when they show unreleased code.
+tested. README, documentation and website share the PNG captures in
+`docs/screenshots/`; web previews are derived from the same originals. Commit all
+six PNGs, the source manifest, responsive WebPs and the rebuilt inline hero.
+Validate committed assets before CI regenerates them: generated Pages artifacts
+alone do not update the README on GitHub. See `docs/SCREENSHOTS.md`.
+All screenshot presentations must disclose when they show unreleased code.

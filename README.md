@@ -22,11 +22,26 @@ Retrying resumes at the file level, not within a partially copied file. Linux li
 
 ## Screenshots
 
-![Dashboard](docs/screenshots/dashboard.png)
+These are real Qt captures of the current development workspace, using a disposable
+demo library. They show the unreleased redesign; the downloadable 0.2.1 release
+still has its released interface. [Screenshot guide](docs/SCREENSHOTS.md).
 
-![Gallery](docs/screenshots/gallery.png)
+![Dashboard — library status and recent import activity](docs/screenshots/dashboard.png)
 
-![Duplicate review](docs/screenshots/duplicates.png)
+![Gallery — thumbnails and selected photo inspector](docs/screenshots/gallery.png)
+
+![Duplicate review — keep and candidate comparison](docs/screenshots/duplicates.png)
+
+<details>
+<summary>Cleanup, settings and diagnostics</summary>
+
+![Cleanup — review the queue before moving files to Trash](docs/screenshots/cleanup.png)
+
+![Settings — existing configuration in a scrollable form](docs/screenshots/settings.png)
+
+![Diagnostics — operation logs and technical information](docs/screenshots/diagnostics.png)
+
+</details>
 
 ## Highlights
 

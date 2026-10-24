@@ -1,47 +1,60 @@
-# Screenshot Guide
+# Screenshot guide
 
-Screenshots are useful for the README and for GitHub Releases. Keep them small, current, and focused on real workflows.
+README, documentation and GitHub Pages use real captures of the current Qt
+workspace. These images show the unreleased development interface, not the
+interface included in the downloadable 0.2.1 release.
 
-Recommended files:
+## Shared originals
 
-- `docs/screenshots/main.png` - main sync configuration and controls.
-- `docs/screenshots/dashboard.png` - Dashboard tab after rebuilding the index.
-- `docs/screenshots/gallery.png` - Gallery tab with thumbnails visible.
-- `docs/screenshots/duplicates.png` - Duplicate Review tab with sample duplicate candidates.
-- `docs/screenshots/delete-queue.png` - Safe Delete Queue with queued items.
+All six PNGs below come from the same capture session at 1440×900. The README
+uses these exact files through repository-relative links, so its branch preview
+and the repository home page after merge show the committed design.
 
-The GitHub Pages site links directly to:
+![Dashboard — library status and recent activity](screenshots/dashboard.png)
 
-- `docs/screenshots/dashboard.svg`
-- `docs/screenshots/gallery.svg`
-- `docs/screenshots/duplicates.svg`
+![Gallery — photographs and inspector](screenshots/gallery.png)
 
-Keep those three current so the landing page reflects the latest public workflow. PNG captures can still be used for README snippets and GitHub Releases.
+![Duplicate review — keep and candidate comparison](screenshots/duplicates.png)
 
-Automated capture:
+<details>
+<summary>Cleanup, settings and diagnostics</summary>
+
+![Cleanup — review queue](screenshots/cleanup.png)
+
+![Settings — configuration form](screenshots/settings.png)
+
+![Diagnostics — operation logs](screenshots/diagnostics.png)
+
+</details>
+
+## Regenerate and verify
+
+From the repository root, with Qt, Pillow and Chromium available:
 
 ```bash
 QT_QPA_PLATFORM=offscreen python scripts/capture_demo_screenshots.py
+python scripts/build_site_images.py
+python scripts/check_site.py
+SITE_SCALE=2 python scripts/check_site.py
 ```
 
-The script creates a disposable demo library, captures sanitized desktop views, and writes PNG files under `docs/screenshots/`.
+The capture script isolates configuration, disables autostart and uses only the
+bundled public-domain demo photographs. Never capture private photos, credentials
+or personal paths. It writes six PNGs and a manifest containing source and image
+SHA256 hashes. The image builder derives 640/960/1440 px WebPs and the inline hero
+from those PNGs; it does not create a separate UI mockup.
 
-Suggested capture flow:
+Commit the updated PNGs, manifest, WebPs and `docs/index.html` together. Keep README
+links relative to the repository root and this guide's links relative to `docs/`.
+Do not link screenshots to `main`, old tags or release assets: those would show the
+wrong version in a PR preview. `check_site.py` validates local Markdown images and
+requires README and this guide to reference the complete canonical PNG set.
 
-1. Create a small demo photo root outside the repository, or run `scripts/capture_demo_screenshots.py`.
-2. Add a few copied sample images and videos with safe, non-private content.
-3. Run the app, point it at the demo root, and rebuild the index.
-4. Capture the app window at about `1440x900`.
-5. Save screenshots as PNG files under `docs/screenshots/`.
-6. Add only the best 2-3 screenshots to the README so it stays readable.
+CI checks the committed files before capturing its own Pages images. A Pages build
+alone cannot update images stored in Git: README and this guide change when the PR
+is merged; the public website changes after the subsequent Pages deployment.
+Existing release assets and PyPI packages are not modified by this process.
 
-Example README snippet:
-
-```markdown
-## Screenshots
-
-![Dashboard](docs/screenshots/dashboard.png)
-![Gallery](docs/screenshots/gallery.png)
-```
-
-Do not commit screenshots containing private photos, real paths, or personal data.
+For layout review, also capture 1120×720 and 1920×1080 logical windows, including
+Qt 2× scaling, to a separate output directory. Inspect actual images before
+publishing; keep the canonical shared originals at 1440×900.

@@ -15,13 +15,16 @@
   font-display:swap;
 }
 :root {
-  --paper:#f4f1e9;
-  --surface:#fffdf7;
-  --ink:#242b26;
-  --muted:#59645c;
-  --line:#cbd0c5;
-  --accent:#294c3b;
-  --focus:#87532f;
+  --paper:#f0f3f7;
+  --surface:#fbfcfe;
+  --ink:#202d3d;
+  --muted:#52647b;
+  --line:#c7d1de;
+  --accent:#2e4e70;
+  --accent-hover:#3a6188;
+  --focus:#376c9d;
+  --image:#1c2430;
+  --section:#e5ebf2;
   --warning:#785124;
   --success:#315b3e;
   --danger:#8d352d;
@@ -170,12 +173,12 @@ p {
   color:var(--surface);
 }
 .primary:hover {
-  background:#38644c;
+  background:var(--accent-hover);
 }
 .app-frame {
   margin:0;
   border:1px solid var(--line);
-  background:#202320;
+  background:var(--image);
   overflow:hidden;
   border-radius:3px;
 }
@@ -253,7 +256,7 @@ figcaption strong {
   font-size:15px;
 }
 .inside {
-  background:#e5e8df;
+  background:var(--section);
   border-block:1px solid var(--line);
 }
 .view-controls {

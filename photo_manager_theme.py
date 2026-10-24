@@ -7,11 +7,13 @@ from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication
 
 TOKENS = {
-    'background': '#202320', 'surface': '#292d29', 'raised': '#333a33',
-    'foreground': '#f0eee6', 'muted': '#b7beb4', 'border': '#4b534b',
-    'accent': '#355d49', 'focus': '#d6a478', 'warning': '#e4bb7e',
+    'background': '#1c2430', 'surface': '#242e3c', 'raised': '#2d3b4d',
+    'foreground': '#edf1f5', 'muted': '#b4bfcd', 'border': '#46576d',
+    'accent': '#345776', 'focus': '#91b6db', 'warning': '#e4bb7e',
+    'accent_border': '#718fae', 'accent_hover': '#40688c',
+    'disabled': '#8290a3', 'disabled_border': '#3c4b60',
     'success': '#b2d1b8', 'danger': '#edb0a7', 'danger_surface': '#66342f',
-    'image': '#181b18',
+    'image': '#151c26',
 }
 
 
@@ -76,9 +78,9 @@ def stylesheet() -> str:
                   padding: 6px 10px; min-height: 18px; }
     QPushButton:hover { background: $raised; border-color: $muted; }
     QPushButton:pressed { background: $background; }
-    QPushButton:disabled { color: #858d83; border-color: #414741; background: $background; }
-    QPushButton#primaryAction { background: $accent; border-color: #63836b; font-weight: 600; }
-    QPushButton#primaryAction:hover { background: #426e56; }
+    QPushButton:disabled { color: $disabled; border-color: $disabled_border; background: $background; }
+    QPushButton#primaryAction { background: $accent; border-color: $accent_border; font-weight: 600; }
+    QPushButton#primaryAction:hover { background: $accent_hover; }
     QPushButton#cautionAction { color: $warning; }
     QPushButton#dangerAction { background: $danger_surface; color: $foreground; border-color: $danger; }
     QPushButton#dangerAction:hover { background: #80443b; }
